@@ -21,6 +21,13 @@ from strobes_shell_agent.executor import (
     download_file,
     get_env_info,
 )
+from strobes_shell_agent.pty_handler import (
+    handle_pty_open,
+    handle_pty_input,
+    handle_pty_resize,
+    handle_pty_close,
+    close_all as close_all_pty,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +104,7 @@ class ShellBridgeClient:
                     )
             except ConnectionClosed as e:
                 logger.warning(f"Connection closed: {e}")
+                await close_all_pty()
             except ConnectionRefusedError:
                 logger.error("Connection refused. Check URL and API key.")
             except Exception as e:
@@ -158,6 +166,23 @@ class ShellBridgeClient:
                     # Execute command in background to not block other messages
                     asyncio.create_task(self._handle_command(msg))
 
+                elif msg_type == "pty_open":
+                    # Open interactive PTY session
+                    asyncio.create_task(self._handle_pty_open(msg))
+
+                elif msg_type == "pty_input":
+                    # Write input to PTY (fire-and-forget, no response needed)
+                    session_id = msg.get("session_id", "")
+                    await handle_pty_input(session_id, msg.get("data", ""))
+
+                elif msg_type == "pty_resize":
+                    session_id = msg.get("session_id", "")
+                    handle_pty_resize(session_id, msg.get("cols", 80), msg.get("rows", 24))
+
+                elif msg_type == "pty_close":
+                    session_id = msg.get("session_id", "")
+                    await handle_pty_close(session_id)
+
                 elif msg_type == "identify_ack":
                     data = msg.get("data", {})
                     logger.info(
@@ -172,6 +197,27 @@ class ShellBridgeClient:
                     logger.debug(f"Unknown message type: {msg_type}")
         except ConnectionClosed:
             pass
+
+    async def _handle_pty_open(self, msg: dict):
+        """Handle PTY open request from the platform."""
+        session_id = msg.get("session_id", "")
+        cols = msg.get("cols", 80)
+        rows = msg.get("rows", 24)
+        request_id = msg.get("request_id")
+
+        logger.info(f"Opening PTY session: {session_id} ({cols}x{rows})")
+        result = await handle_pty_open(self._ws, session_id, cols, rows)
+
+        # Send response if request_id provided
+        if request_id:
+            try:
+                await self._ws.send(json.dumps({
+                    "type": "response",
+                    "request_id": request_id,
+                    "data": result,
+                }))
+            except Exception:
+                pass
 
     async def _handle_command(self, msg: dict):
         """Handle a command from the platform."""
