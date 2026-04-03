@@ -36,12 +36,21 @@ Go to **Settings > API Keys** and copy your key.
 
 ### 3. Run the agent
 
-**Option A: pip install**
+**Option A: Pre-built binary (recommended, no Python needed)**
+
+Download from [Releases](https://github.com/strobes-co/strobes-agent-shell/releases):
 
 ```bash
-pip install strobes-shell-agent
+# Linux
+curl -L -o strobes-shell-agent https://github.com/strobes-co/strobes-agent-shell/releases/latest/download/strobes-shell-agent-linux-amd64
+chmod +x strobes-shell-agent
 
-strobes-shell-agent connect \
+# macOS (Apple Silicon)
+curl -L -o strobes-shell-agent https://github.com/strobes-co/strobes-agent-shell/releases/latest/download/strobes-shell-agent-macos-arm64
+chmod +x strobes-shell-agent
+
+# Run
+./strobes-shell-agent connect \
   --url https://app.strobes.co \
   --api-key sk-your-api-key \
   --org-id your-org-uuid \
@@ -52,12 +61,33 @@ strobes-shell-agent connect \
 **Option B: Using .env file**
 
 ```bash
-cp .env.example .env
-# Edit .env with your values
-strobes-shell-agent connect
+# Download the binary (see above), then:
+cat > .env << EOF
+STROBES_URL=https://app.strobes.co
+STROBES_API_KEY=sk-your-api-key
+STROBES_ORG_ID=your-org-uuid
+STROBES_BRIDGE_ID=your-bridge-id
+STROBES_SHELL_NAME=my-server
+EOF
+
+./strobes-shell-agent connect
 ```
 
 **Option C: Docker**
+
+```bash
+cat > .env << EOF
+STROBES_URL=https://app.strobes.co
+STROBES_API_KEY=sk-your-api-key
+STROBES_ORG_ID=your-org-uuid
+STROBES_BRIDGE_ID=your-bridge-id
+STROBES_SHELL_NAME=my-server
+EOF
+
+docker run --rm --env-file .env ghcr.io/strobes-co/strobes-agent-shell:latest connect
+```
+
+**Option D: Docker Compose**
 
 ```bash
 cp .env.example .env
@@ -65,13 +95,13 @@ cp .env.example .env
 docker compose up -d
 ```
 
-**Option D: Pre-built binary (no Python needed)**
-
-Download from [Releases](https://github.com/strobes-co/strobes-agent-shell/releases):
+**Option E: From source (development)**
 
 ```bash
-chmod +x strobes-shell-agent-linux-amd64
-./strobes-shell-agent-linux-amd64 connect --url https://app.strobes.co --api-key sk-xxx --org-id xxx
+git clone https://github.com/strobes-co/strobes-agent-shell.git
+cd strobes-agent-shell
+pip install .
+strobes-shell-agent connect --url https://app.strobes.co --api-key sk-xxx --org-id xxx
 ```
 
 ### 4. Attach to a Workspace
@@ -126,7 +156,7 @@ No new tools are needed — the existing Strobes agent tools route through the b
 
 ## Docker
 
-### Build
+### Build locally
 
 ```bash
 docker build -t strobes/shell-agent .
