@@ -17,13 +17,12 @@ jobs:
   # Build standalone executables for each platform
   build-executables:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             asset_name: strobes-shell-agent-linux-amd64
-          - os: macos-13
-            asset_name: strobes-shell-agent-macos-amd64
-          - os: macos-14
+          - os: macos-latest
             asset_name: strobes-shell-agent-macos-arm64
           - os: windows-latest
             asset_name: strobes-shell-agent-windows-amd64.exe
@@ -58,7 +57,7 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: dist/${{ matrix.asset_name }}*
 
-  # Build Linux ARM64 via QEMU (no native GitHub ARM runner)
+  # Build Linux ARM64 binary inside a native ARM64 Docker container
   build-linux-arm64:
     runs-on: ubuntu-latest
 
@@ -70,16 +69,14 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Build ARM64 binary in Docker
+      - name: Build ARM64 binary
         run: |
           docker run --rm --platform linux/arm64 \
-            -v "${{ github.workspace }}:/src" \
-            -w /src \
-            python:3.12-slim \
-            bash -c '
-              pip install --no-cache-dir ".[dev]" &&
-              pyinstaller \
-                --onefile \
+            -v "$PWD:/src" -w /src \
+            python:3.12-slim bash -c '
+              apt-get update && apt-get install -y --no-install-recommends binutils && rm -rf /var/lib/apt/lists/*
+              pip install --no-cache-dir ".[dev]"
+              pyinstaller --onefile \
                 --name strobes-shell-agent-linux-arm64 \
                 --hidden-import=strobes_shell_agent \
                 --hidden-import=strobes_shell_agent.executor \
@@ -94,12 +91,18 @@ jobs:
           name: strobes-shell-agent-linux-arm64
           path: dist/strobes-shell-agent-linux-arm64*
 
-  # Build and push Docker image
+  # Build and push multi-arch Docker image
   build-docker:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -111,12 +114,6 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image (multi-arch)
         uses: docker/build-push-action@v6
@@ -132,6 +129,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: [build-executables, build-linux-arm64, build-docker]
+    if: always() && needs.build-executables.result == 'success'
 
     steps:
       - uses: actions/checkout@v4
@@ -142,7 +140,7 @@ jobs:
           path: artifacts/
 
       - name: List downloaded artifacts
-        run: find artifacts/ -type f | head -20
+        run: find artifacts/ -type f
 
       - name: Extract version from tag
         id: version
@@ -165,7 +163,14 @@ jobs:
             ./strobes-shell-agent-linux-amd64 connect --url https://app.strobes.co --api-key YOUR_KEY --org-id YOUR_ORG
             ```
 
-            ### Docker
+            | Platform | Binary |
+            |---|---|
+            | Linux x86_64 | `strobes-shell-agent-linux-amd64` |
+            | Linux ARM64 | `strobes-shell-agent-linux-arm64` |
+            | macOS Apple Silicon | `strobes-shell-agent-macos-arm64` |
+            | Windows x86_64 | `strobes-shell-agent-windows-amd64.exe` |
+
+            ### Docker (multi-arch: amd64 + arm64)
             ```bash
             docker run --rm --env-file .env ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }} connect
             ```
