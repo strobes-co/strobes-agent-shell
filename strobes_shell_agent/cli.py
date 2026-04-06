@@ -40,9 +40,11 @@ def main():
               help="Display name for this shell (env: STROBES_SHELL_NAME)")
 @click.option("--cwd", default=None, envvar="STROBES_CWD",
               help="Working directory for commands (env: STROBES_CWD)")
+@click.option("--ssl-verify/--no-ssl-verify", default=True, envvar="STROBES_SSL_VERIFY",
+              help="Verify SSL certificates (env: STROBES_SSL_VERIFY)")
 @click.option("-v", "--verbose", is_flag=True, envvar="STROBES_VERBOSE",
               help="Enable debug logging (env: STROBES_VERBOSE)")
-def connect(url, api_key, org_id, bridge_id, name, cwd, verbose):
+def connect(url, api_key, org_id, bridge_id, name, cwd, ssl_verify, verbose):
     """Connect to Strobes and start accepting commands.
 
     All options can be set via environment variables or a .env file.
@@ -79,6 +81,7 @@ def connect(url, api_key, org_id, bridge_id, name, cwd, verbose):
         bridge_id=bridge_id,
         name=name or "",
         cwd=cwd,
+        ssl_verify=ssl_verify,
     )
 
     click.echo("Strobes Shell Bridge Agent v0.1.0")

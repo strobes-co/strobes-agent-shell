@@ -5,6 +5,7 @@ import json
 import logging
 import platform
 import os
+import ssl
 import time
 from typing import Optional
 
@@ -49,6 +50,7 @@ class ShellBridgeClient:
         bridge_id: str,
         name: str = "",
         cwd: Optional[str] = None,
+        ssl_verify: bool = True,
     ):
         self.url = url.rstrip("/")
         self.api_key = api_key
@@ -56,6 +58,7 @@ class ShellBridgeClient:
         self.bridge_id = bridge_id
         self.name = name or platform.node()
         self.cwd = cwd or os.getcwd()
+        self.ssl_verify = ssl_verify
         self._ws = None
         self._running = False
 
@@ -84,11 +87,18 @@ class ShellBridgeClient:
         while self._running:
             try:
                 logger.info(f"Connecting to {self.url}...")
+                ssl_context = None
+                if self.ws_url.startswith("wss://") and not self.ssl_verify:
+                    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+
                 async with websockets.connect(
                     self.ws_url,
                     ping_interval=None,  # We handle pings ourselves
                     max_size=10_485_760,  # 10MB max message
                     close_timeout=5,
+                    ssl=ssl_context,
                 ) as ws:
                     self._ws = ws
                     backoff = INITIAL_BACKOFF  # Reset on successful connect
