@@ -5,14 +5,19 @@ back through the WebSocket to the Strobes platform.
 """
 
 import asyncio
-import fcntl
 import logging
 import os
-import pty
-import select
-import signal
-import struct
-import termios
+import sys
+
+IS_WINDOWS = sys.platform == "win32"
+
+if not IS_WINDOWS:
+    import fcntl
+    import pty
+    import select
+    import signal
+    import struct
+    import termios
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +193,12 @@ class PtySession:
 
 async def handle_pty_open(ws, session_id: str, cols: int = 80, rows: int = 24) -> dict:
     """Open a new PTY session."""
+    if IS_WINDOWS:
+        return {
+            "success": False,
+            "error": "Interactive PTY sessions are not supported on Windows.",
+        }
+
     if session_id in _sessions:
         await _sessions[session_id].stop()
 
