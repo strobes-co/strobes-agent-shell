@@ -201,7 +201,42 @@ def render(template: str, **tokens: str) -> str:
     return template
 
 
-def _extract(arc: Path, kind: str, dest: Path) -> None:
+
+def _resign_macos(root: Path) -> None:
+    """Ad-hoc re-sign every Mach-O under `root` on macOS.
+
+    Extracting a signed bundle invalidates its signatures, and macOS then
+    SIGKILLs the process with NO output and NO stderr — exit 137 and nothing
+    else, which reads like a hung or empty tool rather than a rejected one.
+    Seen with noir: the binary alone re-signed still died; its adjacent
+    libssl/libcrypto had to be re-signed too, and the libs must be signed
+    BEFORE the executable that loads them.
+
+    Best-effort: a failure here leaves the pack exactly as it was, and the
+    tool's own smoke test is what should catch it.
+    """
+    # Keyed off the HOST, not the target: codesign only exists on macOS and can
+    # only sign for the machine it runs on, so a cross-build simply skips this.
+    if sys.platform != "darwin" or not shutil.which("codesign"):
+        return
+    libs, exes = [], []
+    for f in root.rglob("*"):
+        if not f.is_file():
+            continue
+        (libs if f.suffix == ".dylib" else exes).append(f)
+    for f in libs + exes:          # libraries first — order matters
+        subprocess.run(["codesign", "--force", "--sign", "-", str(f)],
+                       capture_output=True, check=False)
+
+
+def _extract(arc: Path, kind: str, dest: Path, binname: str = "") -> None:
+    if kind == "none":
+        # Not an archive at all — the release asset IS the executable
+        # (opengrep and Linux noir both ship this way). Move it into place under
+        # its plain name so the rglob(binary) lookup below finds it; without
+        # this branch it fell through to tarfile and died on a non-tar file.
+        shutil.move(str(arc), str(dest / (binname or arc.stem)))
+        return
     if kind == "zip":
         with zipfile.ZipFile(arc) as z:
             z.extractall(dest)
@@ -268,8 +303,8 @@ def download_tools(manifest: Path, pack: Path, os_name: str, arch: str,
                     lock[name] = _install_dmg(tool, arc, pack, bindir, exe, url,
                                               env, bin_dirs)
                 else:
-                    _extract(arc, archive, tmp)
                     binname = tool["binary"] + exe
+                    _extract(arc, archive, tmp, binname)
                     found = next((p for p in tmp.rglob(binname) if p.is_file()), None)
                     if not found:
                         print(f"    ! binary '{binname}' not found in archive, skipping")
@@ -389,13 +424,28 @@ def _finalize_bundle(tool: dict, share: Path, pack: Path, bindir: Path, exe: str
         self-contained binaries (Linux musl / macOS static nmap) that find data via env.
       - expose 'path': add share/<bundle_dir> to PATH. Needed when the binary depends on
         adjacent files (Windows nmap.exe + its DLLs)."""
+    # Restore the exec bit across the whole bundle before anything is linked.
+    # zipfile drops POSIX modes, so a launcher that shells out to a sibling
+    # (joern -> bin/repl-bridge) failed with a bare "Permission denied" naming
+    # only the path — which reads like a missing file, not a mode problem.
+    for _f in share.rglob("*"):
+        if _f.is_file() and (_f.suffix in ("", ".sh") or _f.parent.name == "bin"):
+            try:
+                _f.chmod(_f.stat().st_mode | 0o111)
+            except OSError:
+                pass
+    _resign_macos(share)
     binaries = tool.get("binaries", [tool.get("primary", tool["name"])])
     expose = tool.get("expose", "link")
     exposed = []
     if expose == "path":
-        bin_dirs.append(os.path.relpath(share, pack).replace(os.sep, "/"))
+        # `path_subdir` for archives whose launchers sit one level down after the
+        # single-top-dir flatten (joern-cli/ -> share/joern/, launchers in bin/).
+        # Without it the PATH entry points at the parent and nothing resolves.
+        _root = share / tool["path_subdir"] if tool.get("path_subdir") else share
+        bin_dirs.append(os.path.relpath(_root, pack).replace(os.sep, "/"))
         for b in binaries:
-            t = share / (b + exe)
+            t = _root / (b + exe)
             if t.exists():
                 t.chmod(0o755)
                 exposed.append(b + exe)
