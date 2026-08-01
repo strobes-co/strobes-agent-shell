@@ -347,43 +347,6 @@
         "macos/x86_64",
         "macos/aarch64"
       ]
-    },
-    {
-      "//": "Joern -- code property graphs for real interprocedural dataflow.",
-      "//2": "JVM-based: joern-cli is a launcher script, not a static binary, so the",
-      "//3": "host needs a JRE. Shipped on all three OSes because the sandbox images",
-      "//4": "have one; on a bare laptop it installs and then fails at run time, which",
-      "//5": "the wrapper must report rather than treating as a scan with no findings.",
-      "name": "joern",
-      "version": "4.0.593",
-      "archive": "zip",
-      "kind": "bundle",
-      "expose": "path",
-      "url": "https://github.com/joernio/joern/releases/download/v{version}/joern-cli-{os}-{arch}.zip",
-      "os_map": {
-        "linux": "linux",
-        "macos": "macos",
-        "windows": "windows"
-      },
-      "arch_map": {
-        "x86_64": "x86_64",
-        "aarch64": "arm64"
-      },
-      "platforms": [
-        "linux/x86_64",
-        "linux/aarch64",
-        "macos/x86_64",
-        "macos/aarch64",
-        "windows/x86_64",
-        "windows/aarch64"
-      ],
-      "bundle_dir": "joern",
-      "binaries": [
-        "joern",
-        "joern-parse",
-        "joern-export"
-      ],
-      "primary": "joern"
     }
   ]
 }
