@@ -383,6 +383,24 @@
       "platforms": [
         "windows/x86_64"
       ]
+    },
+    {
+      "//": "AWS CLI v2 \u2014 the credential/identity surface strobes_cloud verifies with.",
+      "//2": "Prowler itself publishes NO binaries (pip/container only), so it is",
+      "//3": "pip-installed by strobes_cloud._core._pip_install, not carried here.",
+      "name": "aws",
+      "version": "2.31.14",
+      "archive": "zip",
+      "binary": "aws",
+      "url": "https://awscli.amazonaws.com/awscli-exe-linux-{arch}-{version}.zip",
+      "arch_map": {
+        "x86_64": "x86_64",
+        "aarch64": "aarch64"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64"
+      ]
     }
   ]
 }
