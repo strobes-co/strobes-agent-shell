@@ -237,6 +237,39 @@ def _extract(arc: Path, kind: str, dest: Path, binname: str = "") -> None:
         # this branch it fell through to tarfile and died on a non-tar file.
         shutil.move(str(arc), str(dest / (binname or arc.stem)))
         return
+    if kind in ("pkg", "msi"):
+        # Installer packages, not archives. AWS publishes CLI v2 for macOS ONLY
+        # as a .pkg and for Windows ONLY as an .msi -- there is no plain archive
+        # for either -- so without this branch `aws` can never be in a macOS or
+        # Windows pack.
+        #
+        # Both are unpacked WITHOUT installing to the machine: `pkgutil
+        # --expand-full` expands the payload in place, and `msiexec /a` is an
+        # administrative install that lays files out in TARGETDIR. A build that
+        # actually installed would mutate the runner and still leave nothing in
+        # the pack.
+        staged = dest / "_installer"
+        if kind == "pkg":
+            subprocess.run(["pkgutil", "--expand-full", str(arc), str(staged)],
+                           check=True)
+        else:
+            subprocess.run(["msiexec", "/a", str(arc), "/qn",
+                            f"TARGETDIR={staged}"], check=True)
+        # Hoist the real payload to the bundle root. _install_bundle only
+        # flattens ONE level of nesting, and an expanded pkg is four deep
+        # (_installer/aws-cli.pkg/Payload/aws-cli/), so without this the binary
+        # never lands where `binaries`/`expose` look for it.
+        want = binname or ""
+        found = next((p for p in staged.rglob(want) if p.is_file()), None) \
+            if want else None
+        payload = found.parent if found else staged
+        for item in list(payload.iterdir()):
+            target = dest / item.name
+            if target.exists():
+                shutil.rmtree(target) if target.is_dir() else target.unlink()
+            shutil.move(str(item), str(target))
+        shutil.rmtree(staged, ignore_errors=True)
+        return
     if kind == "zip":
         with zipfile.ZipFile(arc) as z:
             z.extractall(dest)
@@ -363,7 +396,7 @@ def _install_bundle(tool: dict, arc: Path, pack: Path, bindir: Path, exe: str,
     if share.exists():
         shutil.rmtree(share)
     share.mkdir(parents=True)
-    _extract(arc, tool["archive"], share)
+    _extract(arc, tool["archive"], share, tool.get("binary", "") + exe)
     # some archives nest a single top dir; flatten it so paths match the manifest env
     entries = [p for p in share.iterdir() if p.name not in (".", "..")]
     if len(entries) == 1 and entries[0].is_dir():

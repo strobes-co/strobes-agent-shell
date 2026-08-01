@@ -389,7 +389,7 @@
       "//2": "Prowler itself publishes NO binaries (pip/container only), so it is",
       "//3": "pip-installed by strobes_cloud._core._pip_install, not carried here.",
       "name": "aws",
-      "version": "2.31.14",
+      "version": "2.36.14",
       "archive": "zip",
       "binary": "aws",
       "url": "https://awscli.amazonaws.com/awscli-exe-linux-{arch}-{version}.zip",
@@ -400,6 +400,47 @@
       "platforms": [
         "linux/x86_64",
         "linux/aarch64"
+      ],
+      "//4": "v2 is NOT on PyPI -- `pip install awscli` installs v1 (pypi awscli == 1.45.x), which is in maintenance mode. Hence the zip installer rather than pip."
+    },
+    {
+      "//": "AWS CLI v2 for macOS. AWS publishes NO plain archive for macOS -- only",
+      "//2": "a .pkg -- so this needs build_pack's `pkg` branch (pkgutil --expand-full,",
+      "//3": "which unpacks the payload without touching the system). The binary is a",
+      "//4": "UNIVERSAL Mach-O (x86_64 + arm64), so one asset serves both arches, and",
+      "//5": "it carries its own Python alongside -- hence bundle, not a bare binary.",
+      "name": "aws",
+      "version": "2.36.14",
+      "archive": "pkg",
+      "kind": "bundle",
+      "expose": "link",
+      "binary": "aws",
+      "url": "https://awscli.amazonaws.com/AWSCLIV2-{version}.pkg",
+      "platforms": [
+        "macos/x86_64",
+        "macos/aarch64"
+      ],
+      "bundle_dir": "aws",
+      "binaries": [
+        "aws"
+      ]
+    },
+    {
+      "//": "AWS CLI v2 for Windows ships an .msi; `msiexec /a` lays the payload out",
+      "//2": "in TARGETDIR instead of installing to the machine.",
+      "name": "aws",
+      "version": "2.36.14",
+      "archive": "msi",
+      "kind": "bundle",
+      "expose": "path",
+      "binary": "aws",
+      "url": "https://awscli.amazonaws.com/AWSCLIV2.msi",
+      "platforms": [
+        "windows/x86_64"
+      ],
+      "bundle_dir": "aws",
+      "binaries": [
+        "aws"
       ]
     }
   ]
