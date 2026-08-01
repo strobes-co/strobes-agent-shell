@@ -347,6 +347,42 @@
         "macos/x86_64",
         "macos/aarch64"
       ]
+    },
+    {
+      "//": "Anchore Syft -- SBOM/dependency inventory across 30+ ecosystems.",
+      "//2": "Replaces strobes_cr's hand-written manifest parsers. Deliberately an",
+      "//3": "INVENTORY tool: it consults no vulnerability database, which is the",
+      "//4": "same contract c.deps already promises (vuln_db_consulted: False).",
+      "name": "syft",
+      "version": "1.50.0",
+      "archive": "tar.gz",
+      "binary": "syft",
+      "url": "https://github.com/anchore/syft/releases/download/v{version}/syft_{version}_{os}_{arch}.tar.gz",
+      "os_map": {
+        "linux": "linux",
+        "macos": "darwin"
+      },
+      "arch_map": {
+        "x86_64": "amd64",
+        "aarch64": "arm64"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/x86_64",
+        "macos/aarch64"
+      ]
+    },
+    {
+      "//": "Windows ships a .zip.",
+      "name": "syft",
+      "version": "1.50.0",
+      "archive": "zip",
+      "binary": "syft.exe",
+      "url": "https://github.com/anchore/syft/releases/download/v{version}/syft_{version}_windows_amd64.zip",
+      "platforms": [
+        "windows/x86_64"
+      ]
     }
   ]
 }
