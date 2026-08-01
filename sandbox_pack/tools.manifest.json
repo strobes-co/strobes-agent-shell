@@ -4,8 +4,15 @@
   "//3": "the observed sha256 into tools.lock.json for reproducible offline verification.",
   "//4": "URL templates use {version} {os} {arch} {arch2}; per-tool os/arch maps normalise naming.",
   "//5": "A tool with no build for a given (os,arch) is skipped (logged), never fatal.",
-  "os_map_default": { "linux": "linux", "macos": "macos", "windows": "windows" },
-  "arch_map_default": { "x86_64": "amd64", "aarch64": "arm64" },
+  "os_map_default": {
+    "linux": "linux",
+    "macos": "macos",
+    "windows": "windows"
+  },
+  "arch_map_default": {
+    "x86_64": "amd64",
+    "aarch64": "arm64"
+  },
   "tools": [
     {
       "name": "nuclei",
@@ -13,8 +20,18 @@
       "archive": "zip",
       "binary": "nuclei",
       "url": "https://github.com/projectdiscovery/nuclei/releases/download/v{version}/nuclei_{version}_{os}_{arch}.zip",
-      "os_map": { "linux": "linux", "macos": "macOS", "windows": "windows" },
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64", "windows/x86_64"]
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
     },
     {
       "name": "httpx",
@@ -22,8 +39,18 @@
       "archive": "zip",
       "binary": "httpx",
       "url": "https://github.com/projectdiscovery/httpx/releases/download/v{version}/httpx_{version}_{os}_{arch}.zip",
-      "os_map": { "linux": "linux", "macos": "macOS", "windows": "windows" },
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64", "windows/x86_64"]
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
     },
     {
       "name": "subfinder",
@@ -31,8 +58,18 @@
       "archive": "zip",
       "binary": "subfinder",
       "url": "https://github.com/projectdiscovery/subfinder/releases/download/v{version}/subfinder_{version}_{os}_{arch}.zip",
-      "os_map": { "linux": "linux", "macos": "macOS", "windows": "windows" },
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64", "windows/x86_64"]
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
     },
     {
       "name": "dnsx",
@@ -40,28 +77,62 @@
       "archive": "zip",
       "binary": "dnsx",
       "url": "https://github.com/projectdiscovery/dnsx/releases/download/v{version}/dnsx_{version}_{os}_{arch}.zip",
-      "os_map": { "linux": "linux", "macos": "macOS", "windows": "windows" },
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64", "windows/x86_64"]
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
     },
     {
       "name": "ffuf",
       "version": "2.1.0",
       "archive": "tar.gz",
-      "archive_map": { "windows": "zip" },
+      "archive_map": {
+        "windows": "zip"
+      },
       "binary": "ffuf",
       "url": "https://github.com/ffuf/ffuf/releases/download/v{version}/ffuf_{version}_{os}_{arch}.{ext}",
-      "os_map": { "linux": "linux", "macos": "macos", "windows": "windows" },
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64", "windows/x86_64"]
+      "os_map": {
+        "linux": "linux",
+        "macos": "macos",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
     },
     {
       "name": "gobuster",
       "version": "3.6.0",
       "archive": "tar.gz",
-      "archive_map": { "windows": "zip" },
+      "archive_map": {
+        "windows": "zip"
+      },
       "binary": "gobuster",
       "url": "https://github.com/OJ/gobuster/releases/download/v{version}/gobuster_{os}_{arch2}.{ext}",
-      "os_map": { "linux": "Linux", "macos": "Darwin", "windows": "Windows" },
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64", "windows/x86_64"]
+      "os_map": {
+        "linux": "Linux",
+        "macos": "Darwin",
+        "windows": "Windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
     },
     {
       "name": "nmap",
@@ -73,12 +144,24 @@
       "//2": "glibc, no floor). Flat archive: nmap/ncat/nping + data/. NMAPDIR -> data.",
       "//3": "Connect scan (-sT) unprivileged; SYN (-sS)/OS-detect need root/cap_net_raw.",
       "url": "https://github.com/ernw/static-toolbox/releases/download/nmap-v{version}/nmap-{version}-{arch3}-portable.tar.gz",
-      "arch3": { "x86_64": "x86_64", "aarch64": "aarch64" },
+      "arch3": {
+        "x86_64": "x86_64",
+        "aarch64": "aarch64"
+      },
       "bundle_dir": "nmap",
-      "binaries": ["nmap", "ncat", "nping"],
+      "binaries": [
+        "nmap",
+        "ncat",
+        "nping"
+      ],
       "primary": "nmap",
-      "env": { "NMAPDIR": "share/nmap/data" },
-      "platforms": ["linux/x86_64", "linux/aarch64"]
+      "env": {
+        "NMAPDIR": "share/nmap/data"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64"
+      ]
     },
     {
       "name": "nmap",
@@ -92,10 +175,18 @@
       "//4": "OS-detect need the Npcap driver, a privileged kernel install nmap can't bundle.",
       "url": "https://nmap.org/dist/nmap-{version}-win32.zip",
       "bundle_dir": "nmap",
-      "binaries": ["nmap", "ncat", "nping"],
+      "binaries": [
+        "nmap",
+        "ncat",
+        "nping"
+      ],
       "primary": "nmap",
-      "env": { "NMAPDIR": "share/nmap" },
-      "platforms": ["windows/x86_64"]
+      "env": {
+        "NMAPDIR": "share/nmap"
+      },
+      "platforms": [
+        "windows/x86_64"
+      ]
     },
     {
       "name": "nmap",
@@ -109,12 +200,25 @@
       "//4": "Connect scan (-sT) works unprivileged; SYN/OS-detect need sudo. Built on macOS only.",
       "url": "https://nmap.org/dist/nmap-{version}.dmg",
       "bundle_dir": "nmap",
-      "components": ["nmap", "ncat", "nping"],
-      "binaries": ["nmap", "ncat", "nping"],
+      "components": [
+        "nmap",
+        "ncat",
+        "nping"
+      ],
+      "binaries": [
+        "nmap",
+        "ncat",
+        "nping"
+      ],
       "primary": "nmap",
       "data_from": "share/nmap",
-      "env": { "NMAPDIR": "share/nmap/data" },
-      "platforms": ["macos/x86_64", "macos/aarch64"]
+      "env": {
+        "NMAPDIR": "share/nmap/data"
+      },
+      "platforms": [
+        "macos/x86_64",
+        "macos/aarch64"
+      ]
     },
     {
       "name": "responder",
@@ -124,9 +228,19 @@
       "repo": "https://github.com/lgandx/Responder.git",
       "ref": "master",
       "bundle_dir": "responder",
-      "entry": { "responder": "Responder.py", "responder-dumphash": "tools/DumpHash.py" },
-      "profiles": ["internal-ad"],
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64"]
+      "entry": {
+        "responder": "Responder.py",
+        "responder-dumphash": "tools/DumpHash.py"
+      },
+      "profiles": [
+        "internal-ad"
+      ],
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64"
+      ]
     },
     {
       "name": "enum4linux-ng",
@@ -135,9 +249,141 @@
       "repo": "https://github.com/cddmp/enum4linux-ng.git",
       "ref": "master",
       "bundle_dir": "enum4linux-ng",
-      "entry": { "enum4linux-ng": "enum4linux-ng.py" },
-      "profiles": ["internal-ad"],
-      "platforms": ["linux/x86_64", "linux/aarch64", "macos/aarch64", "macos/x86_64"]
+      "entry": {
+        "enum4linux-ng": "enum4linux-ng.py"
+      },
+      "profiles": [
+        "internal-ad"
+      ],
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64"
+      ]
+    },
+    {
+      "//": "Static-analysis engine the code-review agent drives for taint queries.",
+      "//2": "Use the bare `opengrep_*` assets. `opengrep-core_*.tar.gz` is the OCaml",
+      "//3": "core, NOT the CLI -- shipping that would give a binary that cannot run",
+      "//4": "`opengrep scan --config`.",
+      "name": "opengrep",
+      "version": "1.26.0",
+      "archive": "none",
+      "binary": "opengrep",
+      "url": "https://github.com/opengrep/opengrep/releases/download/v{version}/opengrep_{os}_{arch}",
+      "os_map": {
+        "linux": "manylinux",
+        "macos": "osx"
+      },
+      "arch_map": {
+        "x86_64": "x86",
+        "aarch64": "aarch64"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/x86_64"
+      ]
+    },
+    {
+      "//": "macOS arm64 names the arch `arm64`, not `aarch64`, so it needs its own entry.",
+      "name": "opengrep",
+      "version": "1.26.0",
+      "archive": "none",
+      "binary": "opengrep",
+      "url": "https://github.com/opengrep/opengrep/releases/download/v{version}/opengrep_osx_arm64",
+      "platforms": [
+        "macos/aarch64"
+      ]
+    },
+    {
+      "//": "Windows ships a .exe; x86_64 only (no arm64 build upstream).",
+      "name": "opengrep",
+      "version": "1.26.0",
+      "archive": "none",
+      "binary": "opengrep",
+      "url": "https://github.com/opengrep/opengrep/releases/download/v{version}/opengrep_windows_x86.exe",
+      "platforms": [
+        "windows/x86_64"
+      ]
+    },
+    {
+      "//": "OWASP Noir -- endpoint/attack-surface discovery from source.",
+      "name": "noir",
+      "version": "1.2.1",
+      "archive": "none",
+      "binary": "noir",
+      "url": "https://github.com/owasp-noir/noir/releases/download/v{version}/noir-v{version}-linux-{arch}",
+      "arch_map": {
+        "x86_64": "x86_64",
+        "aarch64": "arm64"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64"
+      ]
+    },
+    {
+      "//": "macOS ships binary + adjacent lib/ (libssl, libcrypto). Must be a",
+      "//2": "bundle: shipping just the binary passes the build and then dies at",
+      "//3": "first invocation with a dyld @executable_path error.",
+      "name": "noir",
+      "version": "1.2.1",
+      "archive": "tar.gz",
+      "kind": "bundle",
+      "expose": "link",
+      "bundle_dir": "noir",
+      "binaries": [
+        "noir"
+      ],
+      "primary": "noir",
+      "url": "https://github.com/owasp-noir/noir/releases/download/v{version}/noir-v{version}-osx-{arch}.tar.gz",
+      "arch_map": {
+        "x86_64": "x86_64",
+        "aarch64": "arm64"
+      },
+      "platforms": [
+        "macos/x86_64",
+        "macos/aarch64"
+      ]
+    },
+    {
+      "//": "Joern -- code property graphs for real interprocedural dataflow.",
+      "//2": "JVM-based: joern-cli is a launcher script, not a static binary, so the",
+      "//3": "host needs a JRE. Shipped on all three OSes because the sandbox images",
+      "//4": "have one; on a bare laptop it installs and then fails at run time, which",
+      "//5": "the wrapper must report rather than treating as a scan with no findings.",
+      "name": "joern",
+      "version": "4.0.593",
+      "archive": "zip",
+      "kind": "bundle",
+      "expose": "path",
+      "url": "https://github.com/joernio/joern/releases/download/v{version}/joern-cli-{os}-{arch}.zip",
+      "os_map": {
+        "linux": "linux",
+        "macos": "macos",
+        "windows": "windows"
+      },
+      "arch_map": {
+        "x86_64": "x86_64",
+        "aarch64": "arm64"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/x86_64",
+        "macos/aarch64",
+        "windows/x86_64",
+        "windows/aarch64"
+      ],
+      "bundle_dir": "joern",
+      "binaries": [
+        "joern",
+        "joern-parse",
+        "joern-export"
+      ],
+      "primary": "joern"
     }
   ]
 }
