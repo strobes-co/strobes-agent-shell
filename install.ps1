@@ -49,7 +49,22 @@ if ($DownloadBase) {
   $sep = if ($DownloadBase.Contains("?")) { "&" } else { "?" }
   $Url = "${DownloadBase}${sep}asset=$Asset"
 } else {
-  $Url = "https://github.com/$Repo/releases/latest/download/$Asset"
+  # This repo publishes two interleaved release trains - agent binaries
+  # (vX.Y.Z) and sandbox packs (pack-vX.Y.Z) - and GitHub's /releases/latest
+  # just means "most recently published release", regardless of train. So it
+  # can resolve to a pack-only release that has no agent binary at all. Walk
+  # releases newest-first (both trains, pack releases included) and use the
+  # first one that actually ships this platform's asset.
+  Info "Resolving latest release that includes $Asset..."
+  $Tag = $null
+  for ($page = 1; $page -le 5; $page++) {
+    $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=100&page=$page" -UseBasicParsing
+    if (-not $releases -or $releases.Count -eq 0) { break }
+    $match = $releases | Where-Object { $_.assets.name -contains $Asset } | Select-Object -First 1
+    if ($match) { $Tag = $match.tag_name; break }
+  }
+  if (-not $Tag) { Fail "no release found containing asset $Asset" }
+  $Url = "https://github.com/$Repo/releases/download/$Tag/$Asset"
 }
 Info "Downloading $Asset..."
 try { Invoke-WebRequest -Uri $Url -OutFile $Target -UseBasicParsing } catch { Fail "download failed: $Url" }
