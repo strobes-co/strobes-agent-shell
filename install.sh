@@ -90,9 +90,14 @@ else
   for page in 1 2 3 4 5; do
     RELEASES_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}")" || die "failed to query GitHub releases API"
     [ "$RELEASES_JSON" = "[]" ] && break
+    # awk must NOT `exit` early here: with `pipefail` set, closing its stdin
+    # before printf finishes writing the (multi-KB) JSON blob sends printf a
+    # SIGPIPE, which pipefail turns into the pipeline's exit status and kills
+    # the script under `set -e` before `die` ever runs. Read to EOF instead.
     TAG="$(printf '%s' "$RELEASES_JSON" | awk -v want="\"name\": \"${ASSET}\"" '
       /"tag_name":/ { tag=$0 }
-      index($0, want) { print tag; exit }
+      index($0, want) && !found { result=tag; found=1 }
+      END { print result }
     ' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
     [ -n "$TAG" ] && break
   done
