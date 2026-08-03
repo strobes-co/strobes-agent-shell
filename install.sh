@@ -79,7 +79,30 @@ if [ -n "$DOWNLOAD_BASE" ]; then
   # Tenant proxy: {tenant}/api/v1/organizations/{org}/ai/bridge/download/?asset=…
   case "$DOWNLOAD_BASE" in *\?*) URL="${DOWNLOAD_BASE}&asset=${ASSET}" ;; *) URL="${DOWNLOAD_BASE}?asset=${ASSET}" ;; esac
 else
-  URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+  # This repo publishes two interleaved release trains — agent binaries
+  # (vX.Y.Z) and sandbox packs (pack-vX.Y.Z) — and GitHub's /releases/latest
+  # just means "most recently published release", regardless of train. So it
+  # can resolve to a pack-only release that has no agent binary at all. Walk
+  # releases newest-first (both trains, pack releases included) and use the
+  # first one that actually ships this platform's asset.
+  c_blue "Resolving latest release that includes ${ASSET}…"
+  TAG=""
+  for page in 1 2 3 4 5; do
+    RELEASES_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}")" || die "failed to query GitHub releases API"
+    [ "$RELEASES_JSON" = "[]" ] && break
+    # awk must NOT `exit` early here: with `pipefail` set, closing its stdin
+    # before printf finishes writing the (multi-KB) JSON blob sends printf a
+    # SIGPIPE, which pipefail turns into the pipeline's exit status and kills
+    # the script under `set -e` before `die` ever runs. Read to EOF instead.
+    TAG="$(printf '%s' "$RELEASES_JSON" | awk -v want="\"name\": \"${ASSET}\"" '
+      /"tag_name":/ { tag=$0 }
+      index($0, want) && !found { result=tag; found=1 }
+      END { print result }
+    ' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+    [ -n "$TAG" ] && break
+  done
+  [ -n "$TAG" ] || die "no release found containing asset ${ASSET}"
+  URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
 fi
 c_blue "Downloading ${ASSET}…"
 TMP="$(mktemp)"
