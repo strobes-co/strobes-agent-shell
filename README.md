@@ -64,11 +64,11 @@ Download from [Releases](https://github.com/strobes-co/strobes-bridge/releases):
 
 ```bash
 # Linux
-curl -L -o strobes-shell-agent https://github.com/strobes-co/strobes-agent-shell/releases/latest/download/strobes-shell-agent-linux-amd64
+curl -L -o strobes-shell-agent https://github.com/strobes-co/strobes-bridge/releases/latest/download/strobes-shell-agent-linux-amd64
 chmod +x strobes-shell-agent
 
 # macOS (Apple Silicon)
-curl -L -o strobes-shell-agent https://github.com/strobes-co/strobes-agent-shell/releases/latest/download/strobes-shell-agent-macos-arm64
+curl -L -o strobes-shell-agent https://github.com/strobes-co/strobes-bridge/releases/latest/download/strobes-shell-agent-macos-arm64
 chmod +x strobes-shell-agent
 
 # Run
@@ -106,7 +106,7 @@ STROBES_BRIDGE_ID=your-bridge-id
 STROBES_SHELL_NAME=my-server
 EOF
 
-docker run --rm --env-file .env ghcr.io/strobes-co/strobes-agent-shell:latest connect
+docker run --rm --env-file .env ghcr.io/strobes-co/strobes-bridge:latest connect
 ```
 
 **Option D: Docker Compose**
@@ -120,8 +120,8 @@ docker compose up -d
 **Option E: From source (development)**
 
 ```bash
-git clone https://github.com/strobes-co/strobes-agent-shell.git
-cd strobes-agent-shell
+git clone https://github.com/strobes-co/strobes-bridge.git
+cd strobes-bridge
 pip install .
 strobes-shell-agent connect --url https://app.strobes.co --api-key sk-xxx --org-id xxx
 ```
@@ -235,7 +235,7 @@ docker run --rm --env-file .env strobes/shell-agent connect
 ```yaml
 services:
   shell-agent:
-    image: ghcr.io/strobes-co/strobes-agent-shell:latest
+    image: ghcr.io/strobes-co/strobes-bridge:latest
     env_file: .env
     restart: unless-stopped
     volumes:
@@ -245,8 +245,8 @@ services:
 ## Development
 
 ```bash
-git clone https://github.com/strobes-co/strobes-agent-shell.git
-cd strobes-agent-shell
+git clone https://github.com/strobes-co/strobes-bridge.git
+cd strobes-bridge
 pip install -e ".[dev]"
 
 # Run tests
