@@ -114,9 +114,16 @@ jobs:
             set -euo pipefail
             PY=\$(ls /w/$PACK/python/*/bin/python3 | head -1)
             \$PY /w/test_pack.py --pack /w/$PACK --skip-relocate
-            for t in nxc certipy bloodhound-python responder enum4linux-ng kerbrute; do
-              if [ ! -x /w/$PACK/bin/\$t ] && [ ! -x \$(dirname \$PY)/\$t ]; then
-                echo \"MISSING internal-ad tool: \$t\"; exit 1;
+            # The pip-installed AD console scripts are the reason this profile
+            # exists, so assert them explicitly. Tools that ship as downloaded
+            # binaries are NOT listed here — their per-platform availability is
+            # recorded in tools.lock.json and already validated by test_pack.py.
+            # Hardcoding them here fails honest builds: kerbrute has no arm64
+            # release (upstream is amd64/386 only), so demanding it on every
+            # platform turns a correct skip into a red build.
+            for t in nxc certipy bloodhound-python; do
+              if [ ! -x \$(dirname \$PY)/\$t ]; then
+                echo \"MISSING internal-ad console script: \$t\"; exit 1;
               fi
               echo \"ok \$t\"
             done
