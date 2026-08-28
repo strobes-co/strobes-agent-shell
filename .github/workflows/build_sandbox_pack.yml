@@ -102,14 +102,23 @@ jobs:
               uv run --python 3.12 python /src/build_pack.py --profile internal-ad --out /out \
                 --manifest /src/tools.manifest.json --python-version 3.12 --tar
             '
+      # `set -e` and a loop that actually tests $t. The previous version ran
+      # `python3 -c 'import shutil,sys; sys.exit(0)'` five times — it never
+      # referenced $t, so it asserted nothing about the AD tools — and with no
+      # `set -e` the block's exit code was the loop's 0, which swallowed a
+      # failing test_pack.py entirely. This validation had never actually run.
       - name: Validate internal-ad pack (offline) on Rocky 8
         run: |
           PACK=out/internal-ad-linux-${{ matrix.arch }}
-          PY=$(ls sandbox_pack/$PACK/python/*/bin/python3)
           docker run --rm --network none -v "$PWD/sandbox_pack":/w:ro rockylinux:8 bash -lc "
-            \$(ls /w/$PACK/python/*/bin/python3) /w/test_pack.py --pack /w/$PACK --skip-relocate
-            for t in nxc certipy bloodhound-python responder enum4linux-ng; do
-              /w/$PACK/python/*/bin/python3 -c 'import shutil,sys; sys.exit(0)' ;
+            set -euo pipefail
+            PY=\$(ls /w/$PACK/python/*/bin/python3 | head -1)
+            \$PY /w/test_pack.py --pack /w/$PACK --skip-relocate
+            for t in nxc certipy bloodhound-python responder enum4linux-ng kerbrute; do
+              if [ ! -x /w/$PACK/bin/\$t ] && [ ! -x \$(dirname \$PY)/\$t ]; then
+                echo \"MISSING internal-ad tool: \$t\"; exit 1;
+              fi
+              echo \"ok \$t\"
             done
           "
       - uses: actions/upload-artifact@v4
