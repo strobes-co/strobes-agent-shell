@@ -153,6 +153,32 @@ def check_tools(pack: Path) -> bool:
     is_mac_arm = manifest.get("os") == "macos" and manifest.get("arch") == "aarch64"
     passed = True
     for name, meta in lock.items():
+        # Git-cloned tools (Responder, enum4linux-ng) are python scripts under
+        # share/<dir>/ reached through generated bin/ launchers. Their lock entry
+        # records `binaries` + `commit` and has NO `binary` and NO `sha256` —
+        # there is no single artifact to hash. This branch used to KeyError on
+        # meta["binary"], which is what made the macOS internal-ad validation
+        # fail even though every tool had downloaded, verified and run.
+        if meta.get("kind") == "git" or (
+                "binary" not in meta and meta.get("binaries")):
+            missing = [b for b in meta.get("binaries", [])
+                       if not (pack / "bin" / b).exists()]
+            if missing:
+                bad(f"{name}: missing launcher(s) {', '.join(missing)}")
+                passed = False
+                continue
+            src = pack / "share" / meta.get("bundle_dir", name)
+            if not src.is_dir():
+                bad(f"{name}: missing source dir ({src})")
+                passed = False
+                continue
+            # Deliberately NOT executed. These need the target network (Responder
+            # binds raw sockets) or arguments to do anything, so "runs" is not a
+            # meaningful check here — presence of the launcher and its source
+            # tree is what the pack can honestly assert.
+            ok(f"{name} @ {meta.get('commit', '?')[:10]} "
+               f"(git bundle, {len(meta.get('binaries', []))} launcher(s))")
+            continue
         # path-exposed bundles keep their binary in share/<dir>/; others live in bin/
         if meta.get("kind") == "bundle" and meta.get("expose") == "path":
             binp = pack / "share" / meta["bundle_dir"] / meta["binary"]

@@ -135,6 +135,80 @@
       ]
     },
     {
+      "//": "Fast SYN/CONNECT port scanner. Complements nmap: naabu sweeps the whole",
+      "//2": "port range in seconds, nmap then service-probes the open ones.",
+      "//3": "SYN mode (`-s s`, the default) needs libpcap AND root/cap_net_raw, neither of",
+      "//4": "which a portable pack can ship -- same constraint as nmap's -sS. CONNECT mode",
+      "//5": "(`-s c`) is the unprivileged path and is what agents should use, mirroring",
+      "//6": "nmap -sT. Go static binary, so no libpcap is needed for connect scans.",
+      "name": "naabu",
+      "version": "2.6.1",
+      "archive": "zip",
+      "binary": "naabu",
+      "url": "https://github.com/projectdiscovery/naabu/releases/download/v{version}/naabu_{version}_{os}_{arch}.zip",
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
+    },
+    {
+      "//": "Crawler/spider -- URL + endpoint discovery to feed httpx/nuclei/ffuf. The",
+      "//2": "default standard mode is pure Go (no browser); `-headless` needs a Chromium",
+      "//3": "the base pack does not ship (see the README's tier-2 browser pack), so it",
+      "//4": "will not work offline here.",
+      "name": "katana",
+      "version": "1.7.0",
+      "archive": "zip",
+      "binary": "katana",
+      "url": "https://github.com/projectdiscovery/katana/releases/download/v{version}/katana_{version}_{os}_{arch}.zip",
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
+    },
+    {
+      "//": "TLS/cert grabber with real cipher-suite and protocol enumeration",
+      "//2": "(`-cipher-enum -tls-version -expired -self-signed -mismatched`).",
+      "//3": "This closes a documented gap: strobes_net/tls.py states cipher-suite",
+      "//4": "enumeration is impossible in the pack because the bundled nmap ships",
+      "//5": "WITHOUT nse_main.lua, so `--script ssl-enum-ciphers` dies and only the",
+      "//6": "single negotiated protocol/cipher is observable. tlsx does the full",
+      "//7": "enumeration itself in Go, no NSE and no OpenSSL needed.",
+      "name": "tlsx",
+      "version": "1.3.0",
+      "archive": "zip",
+      "binary": "tlsx",
+      "url": "https://github.com/projectdiscovery/tlsx/releases/download/v{version}/tlsx_{version}_{os}_{arch}.zip",
+      "os_map": {
+        "linux": "linux",
+        "macos": "macOS",
+        "windows": "windows"
+      },
+      "platforms": [
+        "linux/x86_64",
+        "linux/aarch64",
+        "macos/aarch64",
+        "macos/x86_64",
+        "windows/x86_64"
+      ]
+    },
+    {
       "name": "nmap",
       "version": "7.94SVN",
       "archive": "tar.gz",
@@ -260,6 +334,50 @@
         "linux/aarch64",
         "macos/aarch64",
         "macos/x86_64"
+      ]
+    },
+    {
+      "//": "Kerberos pre-auth user enumeration + password spraying against a DC",
+      "//2": "(userenum / passwordspray / bruteuser / bruteforce). Pure Kerberos over",
+      "//3": "UDP/TCP 88, so it needs no SMB session and no credentials to enumerate --",
+      "//4": "the cheapest first move on an internal AD engagement. AD tool, hence the",
+      "//5": "internal-ad profile only.",
+      "//6": "Ships BARE binaries (kerbrute_linux_amd64, ...), not archives, so",
+      "//7": "archive=none + per-platform naming like the opengrep entries.",
+      "//8": "Upstream's last release is v1.0.3 (2019) and publishes only 386/amd64 --",
+      "//9": "there is NO arm64 asset for any OS, so aarch64 hosts skip it (logged).",
+      "name": "kerbrute",
+      "version": "1.0.3",
+      "archive": "none",
+      "binary": "kerbrute",
+      "url": "https://github.com/ropnop/kerbrute/releases/download/v{version}/kerbrute_{os}_{arch}",
+      "os_map": {
+        "linux": "linux",
+        "macos": "darwin"
+      },
+      "arch_map": {
+        "x86_64": "amd64"
+      },
+      "profiles": [
+        "internal-ad"
+      ],
+      "platforms": [
+        "linux/x86_64",
+        "macos/x86_64"
+      ]
+    },
+    {
+      "//": "Windows ships a .exe asset; amd64 only (no arm64 build upstream).",
+      "name": "kerbrute",
+      "version": "1.0.3",
+      "archive": "none",
+      "binary": "kerbrute",
+      "url": "https://github.com/ropnop/kerbrute/releases/download/v{version}/kerbrute_windows_amd64.exe",
+      "profiles": [
+        "internal-ad"
+      ],
+      "platforms": [
+        "windows/x86_64"
       ]
     },
     {
