@@ -70,8 +70,10 @@ jobs:
           path: sandbox_pack/out/strobes-sandbox-pack-linux-${{ matrix.arch }}.tar.gz
 
   # Internal-network + Active Directory pack (impacket/nxc/certipy/responder/…). Needs a
-  # C + Rust toolchain (netifaces, aardwolf); manylinux has gcc, we add git + rust. Linux
-  # only for now — macOS/Windows AD builds (aardwolf Rust + netifaces) need runner validation.
+  # C + Rust toolchain (netifaces, aardwolf); manylinux has gcc, we add git + rust.
+  # Linux is the GATING platform for this profile (it is what the shipped binary/Docker
+  # image embeds); macOS and Windows AD packs are built by the non-blocking
+  # `internal-ad-macos` / `internal-ad-windows` jobs below.
   internal-ad-linux:
     name: internal-ad-linux-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -115,6 +117,121 @@ jobs:
           name: sandbox-pack-internal-ad-linux-${{ matrix.arch }}
           path: sandbox_pack/out/strobes-sandbox-pack-internal-ad-linux-${{ matrix.arch }}.tar.gz
 
+  # Internal-AD pack for macOS (aarch64 + x86_64). NON-BLOCKING by design: it is
+  # `continue-on-error` and is deliberately kept OUT of `publish`'s `needs:` list,
+  # following the `native-intel` precedent — it self-appends its tarball + .sha256 to
+  # the release on a pack-v* tag instead of gating it.
+  # Why it may legitimately fail: `Responder` and `enum4linux-ng` are declared *nix-only
+  # in tools.manifest.json, and `netexec` pulls a Rust dep (aardwolf) that has to compile
+  # from source on non-Linux runners — plus macos-13 (Intel) is a scarce, slow runner.
+  # None of that may sink the release.
+  internal-ad-macos:
+    name: internal-ad-macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            runner: macos-14      # Apple silicon
+          - arch: x86_64
+            runner: macos-13      # Intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rosetta 2 (Apple Silicon — bundled nmap is x86_64)
+        if: matrix.arch == 'aarch64'
+        run: softwareupdate --install-rosetta --agree-to-license || true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install Rust (netexec pulls aardwolf, a Rust extension)
+        shell: bash
+        run: |
+          command -v cargo >/dev/null || \
+            curl -LsSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Build internal-ad pack
+        shell: bash
+        run: |
+          uv run --python 3.12 python sandbox_pack/build_pack.py --profile internal-ad \
+            --out sandbox_pack/out --python-version 3.12 --tar
+      - name: Validate pack
+        shell: bash
+        run: |
+          PACK=sandbox_pack/out/internal-ad-macos-${{ matrix.arch }}
+          PY=$(ls "$PACK"/python/*/bin/python3* | head -1)
+          "$PY" sandbox_pack/test_pack.py --pack "$PACK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-pack-internal-ad-macos-${{ matrix.arch }}
+          path: sandbox_pack/out/strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz
+      - name: Checksum + append to release
+        if: startsWith(github.ref, 'refs/tags/pack-v')
+        shell: bash
+        run: |
+          cd sandbox_pack/out
+          shasum -a 256 strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz \
+            > strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz.sha256
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/pack-v')
+        with:
+          files: |
+            sandbox_pack/out/strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz
+            sandbox_pack/out/strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz.sha256
+
+  # Internal-AD pack for Windows. Same non-blocking contract as internal-ad-macos:
+  # `continue-on-error` + NOT in `publish`'s `needs:`, self-appending to the release.
+  # This one is the most likely to fail and that is accepted: `Responder` and
+  # `enum4linux-ng` are *nix-only in the manifest (raw sockets) so they are skipped
+  # outright, `netexec`'s Rust dep (aardwolf) must build with MSVC, and `netifaces`
+  # needs the C toolchain. A red Windows AD build must never sink the release.
+  internal-ad-windows:
+    name: internal-ad-windows-x86_64
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Ensure Rust toolchain (netexec pulls aardwolf, a Rust extension)
+        shell: bash
+        run: |
+          command -v cargo >/dev/null || \
+            (curl -sSf -o rustup-init.exe https://win.rustup.rs/x86_64 && \
+             ./rustup-init.exe -y --profile minimal)
+          echo "$USERPROFILE\\.cargo\\bin" >> "$GITHUB_PATH"
+      - name: Build internal-ad pack
+        shell: bash
+        run: |
+          uv run --python 3.12 python sandbox_pack/build_pack.py --profile internal-ad \
+            --out sandbox_pack/out --python-version 3.12 --tar
+      - name: Validate pack
+        shell: bash
+        run: |
+          PACK=sandbox_pack/out/internal-ad-windows-x86_64
+          PY=$(ls "$PACK"/python/*/python.exe | head -1)
+          "$PY" sandbox_pack/test_pack.py --pack "$PACK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-pack-internal-ad-windows-x86_64
+          path: sandbox_pack/out/strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz
+      - name: Checksum + append to release
+        if: startsWith(github.ref, 'refs/tags/pack-v')
+        shell: bash
+        run: |
+          cd sandbox_pack/out
+          sha256sum strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz \
+            > strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz.sha256
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/pack-v')
+        with:
+          files: |
+            sandbox_pack/out/strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz
+            sandbox_pack/out/strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz.sha256
+
+  # Base pack on the runners that must build natively. macos-x86_64 is NOT listed here on
+  # purpose — the `native-intel` job below already covers it on the scarce macos-13 runner,
+  # off the publish gate. Do not duplicate it into this matrix.
   native:
     name: ${{ matrix.triple }}
     runs-on: ${{ matrix.runner }}
@@ -208,7 +325,8 @@ jobs:
           name: Sandbox packs ${{ github.ref_name }}
           body: |
             Self-contained bridge sandbox packs (standalone Python + agent packages +
-            CLI tools: nmap, nuclei, httpx, ffuf, gobuster, subfinder, dnsx).
+            CLI tools: nmap, naabu, nuclei, httpx, katana, tlsx, ffuf, gobuster,
+            subfinder, dnsx; internal-ad packs add kerbrute).
 
             The bridge auto-downloads the pack for its OS/arch on startup via
             `STROBES_PACK_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}`.

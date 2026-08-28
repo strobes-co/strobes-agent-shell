@@ -6,7 +6,8 @@ as a single, self-contained, relocatable directory:
 - a **standalone Python interpreter** (python-build-standalone) with every agent package
   baked in — `boto3`, `reportlab`, `curl_cffi`, `cryptography`, `lxml`, `pillow`, … ;
 - **CLI security tools** in `bin/` — `nuclei`, `httpx`, `subfinder`, `dnsx`, `ffuf`, `gobuster`,
-  and `nmap` (+`ncat`/`nping`) — on **all** platforms (Linux, macOS, Windows).
+  `naabu`, `katana`, `tlsx`, and `nmap` (+`ncat`/`nping`) — on **all** platforms (Linux, macOS,
+  Windows).
 
 It runs with **no Docker, no root, no system Python, and no internet at runtime**. This is how
 the bridge stops being blocked by "the user can't install nmap / boto3 / reportlab here."
@@ -50,8 +51,8 @@ builds all platforms and publishes tarballs + `.sha256` files.
 
 | Profile | Adds | Build needs | Artifact name |
 |---|---|---|---|
-| `base` (default) | web/CLI: nuclei(+templates), nmap, httpx, ffuf, gobuster, subfinder, dnsx + python (boto3, reportlab, curl_cffi, …) | all wheels, **no compiler** | `strobes-sandbox-pack-<triple>` |
-| `internal-ad` | base **plus** impacket, **netexec (nxc)**, certipy, bloodhound-python, mitm6, coercer, smbmap, ldapdomaindump, adidnsdump, bloodyAD, pywerview, lsassy | **C + Rust toolchain** (netifaces=C, aardwolf=Rust via netexec) | `strobes-sandbox-pack-internal-ad-<triple>` |
+| `base` (default) | web/CLI: nuclei(+templates), nmap, naabu, httpx, katana, tlsx, ffuf, gobuster, subfinder, dnsx + python (boto3, reportlab, curl_cffi, …) | all wheels, **no compiler** | `strobes-sandbox-pack-<triple>` |
+| `internal-ad` | base **plus** **kerbrute** (CLI) and impacket, **netexec (nxc)**, certipy, bloodhound-python, mitm6, coercer, smbmap, ldapdomaindump, adidnsdump, bloodyAD, pywerview, lsassy | **C + Rust toolchain** (netifaces=C, aardwolf=Rust via netexec) | `strobes-sandbox-pack-internal-ad-<triple>` |
 
 ```bash
 python3 build_pack.py --profile internal-ad --out ./out --tar   # native (needs gcc + rust)
@@ -68,6 +69,13 @@ still published as a separate tarball (via `build_sandbox_pack.yml`) for web-onl
 based deployments. Git-bundled tools (Responder, enum4linux-ng) ship via the `git` tool kind;
 `windapsearch` is not bundled (its `python-ldap` native dep needs system libldap).
 
+`internal-ad` is built and **gated** on Linux (x86_64/aarch64). macOS and Windows AD packs are
+built by the **non-blocking** `internal-ad-macos` / `internal-ad-windows` CI jobs: Responder and
+enum4linux-ng are `*nix`-only in the manifest and netexec's Rust dep must compile from source
+there, so those legs are `continue-on-error`, stay out of the `publish` gate, and self-append to
+the release when they succeed (same contract as `native-intel`). `kerbrute` has no upstream
+arm64 asset (last release 2019), so aarch64 hosts simply skip it.
+
 ### Platform coverage
 
 | Platform | Baseline | Runs on |
@@ -80,6 +88,15 @@ based deployments. Git-bundled tools (Responder, enum4linux-ng) ship via the `gi
 > **Python** runtime: current Pillow/cryptography no longer ship glibc-2.17 wheels. A
 > musl-static variant would be needed for those and Alpine — see "Future" below.
 > (Note: the bundled **nmap** is musl-static and *does* run on those hosts — see below.)
+
+### Scan/crawl/TLS tools
+
+| Tool | Purpose | Caveat |
+|---|---|---|
+| `naabu` | fast port sweep, feeds nmap the open ports | SYN mode (`-s s`, the default) needs libpcap + root/`cap_net_raw`; use **`-s c`** (connect) unprivileged, exactly like nmap's `-sT` |
+| `katana` | crawler/spider for URL + endpoint discovery | default standard mode is pure Go; `-headless` needs a Chromium the base pack does not ship |
+| `tlsx` | TLS/cert grabbing with real **cipher-suite + protocol enumeration** (`-cipher-enum -tls-version`) | closes the gap documented in `strobes_net/tls.py`: the bundled nmap has no `nse_main.lua`, so `--script ssl-enum-ciphers` cannot run and only the single negotiated cipher was observable |
+| `kerbrute` (internal-ad) | Kerberos pre-auth user enumeration + password spraying | no credentials needed for `userenum`; x86_64 only (no upstream arm64 build) |
 
 ### nmap (all platforms, +`ncat`/`nping`)
 
