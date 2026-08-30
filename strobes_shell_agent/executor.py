@@ -350,9 +350,18 @@ async def execute_code(
         temp_path = f.name
 
     try:
-        # shlex-quote the path so spaces / special chars are safe.
+        # Quote the interpreter + script path for the target shell. shlex.quote is
+        # POSIX-only: on Windows it emits SINGLE quotes, which cmd.exe cannot parse
+        # ("The filename, directory name, or volume label syntax is incorrect"),
+        # so code execution silently failed on every Windows bridge. Use double
+        # quotes (cmd-compatible) on Windows, shlex.quote on POSIX.
+        if os.name == "nt":
+            _interp = pack.python_interpreter()
+            command = f'"{_interp}" "{temp_path}"'
+        else:
+            command = f"{interpreter} {shlex.quote(temp_path)}"
         result = await execute_shell_command(
-            f"{interpreter} {shlex.quote(temp_path)}",
+            command,
             timeout=timeout,
             cwd=cwd if cwd and os.path.isdir(cwd) else None,
         )
