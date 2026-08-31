@@ -604,8 +604,22 @@ def main() -> int:
         nuclei_cfg = install_nuclei_templates(pack, tools_lock)
 
     print("[5/5] writing pack manifest …")
+    packages = pip_freeze(uv, pybin)
+    # A comparable version so a bridge can tell "is my pack current?" and auto-pull
+    # a newer one (see strobes_shell_agent/pack.py:needs_update). In CI it is the
+    # release tag (STROBES_PACK_VERSION, e.g. "v0.1.0"); for a local/manual build it
+    # falls back to a deterministic content hash of the profile + tool lock + python
+    # packages, so ANY change to what the pack ships bumps the version on its own.
+    pack_version = os.environ.get("STROBES_PACK_VERSION", "").strip()
+    if not pack_version:
+        _h = hashlib.sha256()
+        _h.update(args.profile.encode())
+        _h.update(json.dumps(tools_lock, sort_keys=True).encode())
+        _h.update(json.dumps(packages, sort_keys=True).encode())
+        pack_version = "sha-" + _h.hexdigest()[:16]
     manifest = {
         "schema": 1,
+        "version": pack_version,
         "triple": triple,
         "profile": args.profile,
         "os": os_name,
@@ -614,14 +628,14 @@ def main() -> int:
         # store with forward slashes so the path joins cleanly on any OS that reads it
         "interpreter": pybin.relative_to(pack).as_posix(),
         "python_lock": lockfile.name,
-        "packages": pip_freeze(uv, pybin),
+        "packages": packages,
         "tools": tools_lock,
         "env": tools_env,        # runtime env vars (pack-relative), e.g. {"NMAPDIR": "..."}
         "bin_dirs": tools_bin_dirs,  # extra PATH dirs (pack-relative), e.g. Windows nmap dir
         "nuclei": nuclei_cfg,    # {templates, config} pack-relative, or null
     }
     (pack / "pack.manifest.json").write_text(json.dumps(manifest, indent=2))
-    print(f"      packages: {len(manifest['packages'])}  tools: {len(tools_lock)}")
+    print(f"      version: {pack_version}  packages: {len(packages)}  tools: {len(tools_lock)}")
 
     if args.tar:
         tarpath = out / f"strobes-sandbox-pack-{pack_name}.tar.gz"

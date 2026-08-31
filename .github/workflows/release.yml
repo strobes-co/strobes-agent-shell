@@ -12,6 +12,10 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Stamp the release tag into the embedded pack's manifest version so a bridge's
+  # reported pack version matches the standalone packs published for the same tag
+  # (see build_sandbox_pack.yml + strobes_shell_agent/pack.py).
+  STROBES_PACK_VERSION: ${{ github.ref_name }}
 
 jobs:
   # macOS + Windows executables (no glibc floor). Linux is built separately in
@@ -199,6 +203,16 @@ jobs:
 
       - name: List downloaded artifacts
         run: ls -la artifacts/
+
+      # A .sha256 next to each binary so the bridge's self-updater can verify the
+      # download before swapping its own executable (selfupdate._fetch_expected_sha).
+      - name: Checksums for binaries
+        run: |
+          cd artifacts
+          for f in $(find . -type f ! -name '*.sha256'); do
+            sha256sum "$f" | awk '{print $1}' > "$f.sha256"
+          done
+          ls -la
 
       - name: Extract version from tag
         id: version

@@ -12,6 +12,7 @@ import click
 from strobes_shell_agent.config import CONFIG_DIR, get_or_create_bridge_id, get_env
 from strobes_shell_agent.client import ShellBridgeClient
 from strobes_shell_agent import service as svc
+from strobes_shell_agent import __version__
 
 
 # Windows consoles often default to a legacy code page (e.g. cp1252) that
@@ -37,7 +38,7 @@ def setup_logging(verbose: bool):
 
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version=__version__)
 def main():
     """Strobes Shell Bridge Agent — connect your machine to Strobes."""
     pass
@@ -125,7 +126,7 @@ def connect(url, api_key, org_id, bridge_id, name, cwd, ssl_verify, verbose,
         ssl_verify=ssl_verify,
     )
 
-    click.echo("Strobes Shell Bridge Agent v0.1.0")
+    click.echo(f"Strobes Shell Bridge Agent v{__version__}")
     click.echo(f"  Bridge ID:  {bridge_id}")
     click.echo(f"  Name:       {client.name}")
     click.echo(f"  Org:        {org_id}")

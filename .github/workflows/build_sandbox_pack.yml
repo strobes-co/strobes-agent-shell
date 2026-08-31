@@ -5,9 +5,11 @@ name: Build Sandbox Packs
 # Linux packs are built inside manylinux_2_28 containers so they run on glibc >= 2.28
 # (RHEL/Rocky 8+, Ubuntu 20.04+, Debian 10+, Amazon Linux 2023).
 #
-# Trigger manually, or on a tag like `pack-v*`. The runtime daemon downloads these via
-# STROBES_PACK_URL (see strobes_shell_agent/pack.py).
-
+# Trigger manually, on a packs-only tag (`pack-v*`), OR on an agent release tag
+# (`v*`) so EVERY release ships matching sandbox packs — not just the embedded
+# copy inside the binary, but standalone tarballs the bridge can auto-pull via
+# STROBES_PACK_URL (see strobes_shell_agent/pack.py). On a `v*` tag this runs
+# alongside release.yml and appends its pack tarballs to the SAME release.
 on:
   workflow_dispatch:
   pull_request:
@@ -18,9 +20,17 @@ on:
   push:
     tags:
       - "pack-v*"
+      - "v*"
 
 permissions:
   contents: write
+
+env:
+  # Stamp the release tag as each pack's manifest version, so a bridge can tell its
+  # pack is stale and auto-pull the new one (pack.needs_update / update_pack). Empty
+  # on non-tag runs (PR / manual dispatch) → build_pack.py falls back to a
+  # deterministic content hash. Docker-container builds get it via `-e` below.
+  STROBES_PACK_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
 
 jobs:
   linux:
@@ -40,7 +50,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build pack in ${{ matrix.image }}
         run: |
-          docker run --rm \
+          docker run --rm -e STROBES_PACK_VERSION \
             -v "$PWD/sandbox_pack":/src:ro -v "$PWD/sandbox_pack/out":/out \
             ${{ matrix.image }} bash -lc '
               set -e
@@ -91,7 +101,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build internal-ad pack in ${{ matrix.image }}
         run: |
-          docker run --rm \
+          docker run --rm -e STROBES_PACK_VERSION \
             -v "$PWD/sandbox_pack":/src:ro -v "$PWD/sandbox_pack/out":/out \
             ${{ matrix.image }} bash -lc '
               set -e
@@ -182,14 +192,14 @@ jobs:
           name: sandbox-pack-internal-ad-macos-${{ matrix.arch }}
           path: sandbox_pack/out/strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz
       - name: Checksum + append to release
-        if: startsWith(github.ref, 'refs/tags/pack-v')
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           cd sandbox_pack/out
           shasum -a 256 strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz \
             > strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz.sha256
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/pack-v')
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             sandbox_pack/out/strobes-sandbox-pack-internal-ad-macos-${{ matrix.arch }}.tar.gz
@@ -232,14 +242,14 @@ jobs:
           name: sandbox-pack-internal-ad-windows-x86_64
           path: sandbox_pack/out/strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz
       - name: Checksum + append to release
-        if: startsWith(github.ref, 'refs/tags/pack-v')
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           cd sandbox_pack/out
           sha256sum strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz \
             > strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz.sha256
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/pack-v')
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             sandbox_pack/out/strobes-sandbox-pack-internal-ad-windows-x86_64.tar.gz
@@ -307,14 +317,14 @@ jobs:
           name: sandbox-pack-macos-x86_64
           path: sandbox_pack/out/strobes-sandbox-pack-macos-x86_64.tar.gz
       - name: Checksum + append to release
-        if: startsWith(github.ref, 'refs/tags/pack-v')
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: |
           cd sandbox_pack/out
           shasum -a 256 strobes-sandbox-pack-macos-x86_64.tar.gz \
             > strobes-sandbox-pack-macos-x86_64.tar.gz.sha256
       - uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/pack-v')
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             sandbox_pack/out/strobes-sandbox-pack-macos-x86_64.tar.gz
@@ -325,7 +335,7 @@ jobs:
     runs-on: ubuntu-latest
     # Publish whatever packs built. !cancelled() lets a slow/failed leg (e.g. the scarce
     # Intel-mac runner) not sink the release; re-running that job later re-publishes it.
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/pack-v') }}
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -338,13 +348,20 @@ jobs:
           ls -la
       - uses: softprops/action-gh-release@v2
         with:
-          name: Sandbox packs ${{ github.ref_name }}
+          # On a packs-only `pack-v*` tag this job OWNS the release, so title it.
+          # On an agent `v*` tag release.yml owns the title/notes — leave `name`
+          # empty (the action keeps the existing release's name, i.e. the tag) and
+          # only APPEND the pack section so we augment that release instead of
+          # renaming or clobbering it. Files are added either way.
+          name: ${{ startsWith(github.ref, 'refs/tags/pack-v') && format('Sandbox packs {0}', github.ref_name) || '' }}
+          append_body: true
           body: |
+            ### Bridge sandbox packs
             Self-contained bridge sandbox packs (standalone Python + agent packages +
             CLI tools: nmap, naabu, nuclei, httpx, katana, tlsx, ffuf, gobuster,
             subfinder, dnsx; internal-ad packs add kerbrute).
 
-            The bridge auto-downloads the pack for its OS/arch on startup via
+            The bridge auto-downloads/updates the pack for its OS/arch via
             `STROBES_PACK_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}`.
             Each `*.tar.gz` has a matching `*.sha256` for integrity verification.
           files: |
