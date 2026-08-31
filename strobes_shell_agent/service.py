@@ -73,11 +73,22 @@ Restart=always
 RestartSec=5
 # Reasonable resource caps
 LimitNOFILE=65536
-{env_lines}
+{cap_lines}{env_lines}
 
 [Install]
 WantedBy={target}
 """
+
+# Raw-socket capability for the scanners in the sandbox pack (naabu). Granted as an
+# AMBIENT capability so it is inherited by child processes (naabu) WITHOUT running
+# the daemon as full root — least privilege. With CAP_NET_RAW, naabu uses a fast SYN
+# scan instead of the slow, unprivileged connect scan. Only meaningful for a *system*
+# service (a `systemctl --user` manager cannot grant capabilities), so it is added
+# for system scope only. Harmless when the service already runs as root.
+_NET_RAW_CAP_LINES = (
+    "# Raw sockets for fast SYN scanning (naabu) — least privilege, not full root\n"
+    "AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN\n"
+)
 
 
 def install_systemd(args: dict, scope: str = "user") -> str:
@@ -103,9 +114,13 @@ def install_systemd(args: dict, scope: str = "user") -> str:
 
     unit_dir.mkdir(parents=True, exist_ok=True)
     unit_path = unit_dir / f"{LABEL}.service"
+    # Grant CAP_NET_RAW only to a system service — a user manager cannot grant caps,
+    # and putting AmbientCapabilities in a --user unit makes systemd refuse to start it.
+    cap_lines = _NET_RAW_CAP_LINES if scope == "system" else ""
     unit_path.write_text(SYSTEMD_UNIT.format(
         command=_build_command(args),
         target=target,
+        cap_lines=cap_lines,
         env_lines=env_lines,
     ))
 
