@@ -13,6 +13,8 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from strobes_shell_agent import pack
+from strobes_shell_agent import selfupdate
+from strobes_shell_agent import __version__ as AGENT_VERSION
 from strobes_shell_agent.executor import (
     execute_shell_command,
     execute_code,
@@ -180,12 +182,37 @@ class ShellBridgeClient:
                 "hostname": platform.node(),
                 "cwd": self.cwd,
                 "python": platform.python_version(),
-                "agent_version": "0.1.0",
+                "agent_version": AGENT_VERSION,
                 "pack": pack.status(),
                 # Capabilities the platform can rely on for this daemon.
                 "features": ["bg_exec"],
             },
         }))
+
+    async def _apply_updates(self, data: dict):
+        """Apply server-requested updates: sandbox pack in place, then the agent
+        binary (which re-execs, so it goes last). Everything runs in a worker thread
+        (downloads + extraction are blocking) and is fully guarded — a failed or
+        absent update must never disturb the live connection.
+
+        Recognised fields (all optional): ``required_pack_version`` + ``pack_url``,
+        ``required_agent_version`` + ``agent_url``. URLs default to the operator-set
+        ``STROBES_PACK_URL`` / ``STROBES_AGENT_URL`` when omitted."""
+        try:
+            pack_version = data.get("required_pack_version") or data.get("pack_version")
+            pack_url = data.get("pack_url")
+            if pack.needs_update(pack_version):
+                logger.info("pack update required: have %s, want %s",
+                            pack.installed_version(), pack_version)
+                await asyncio.to_thread(pack.update_pack, pack_url, pack_version)
+
+            agent_version = data.get("required_agent_version") or data.get("agent_version")
+            agent_url = data.get("agent_url")
+            if agent_version and agent_version != AGENT_VERSION:
+                # apply_update re-execs / exits on success and never returns.
+                await asyncio.to_thread(selfupdate.maybe_update, agent_version, agent_url)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"update check skipped: {e}")
 
     async def _ping_loop(self):
         """Send periodic pings to keep connection alive."""
@@ -241,6 +268,15 @@ class ShellBridgeClient:
                         f"Identified as bridge_id={data.get('bridge_id')}, "
                         f"connection_id={data.get('connection_id')}"
                     )
+                    # The platform tells each bridge, on connect, what it should be
+                    # running. Apply any required update NOW ("when required to the
+                    # bridge") — pack first (cheap, in-place), then the binary (which
+                    # re-execs, so it must run last). Off the event loop; guarded.
+                    asyncio.create_task(self._apply_updates(data))
+
+                elif msg_type == "update":
+                    # Explicit server push (out of band from identify) — same handler.
+                    asyncio.create_task(self._apply_updates(msg.get("data", msg)))
 
                 elif msg_type == "pong":
                     pass  # Keepalive acknowledged

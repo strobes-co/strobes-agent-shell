@@ -231,6 +231,7 @@ def status() -> dict:
     return {
         "present": True,
         "path": str(pack),
+        "version": m.get("version"),
         "triple": m.get("triple", triple()),
         "profile": m.get("profile", "base"),
         "python_version": m.get("python_version"),
@@ -310,13 +311,23 @@ def ensure_pack(download: bool = True, timeout: int = 300) -> Optional[Path]:
     base_url = os.environ.get(PACK_URL_ENV)
     if not base_url:
         return None
+    root = Path(os.environ.get(PACK_DIR_ENV, DEFAULT_ROOT)).expanduser()
+    if _download_pack(base_url, root, timeout):
+        _reset_caches()
+        return find_pack()
+    return None
 
+
+def _download_pack(base_url: str, root: Path, timeout: int = 300) -> bool:
+    """Download the pack tarball for this triple from ``base_url``, verify its sha256
+    (when a ``.sha256`` is published alongside), and extract into ``root``. Returns
+    True on success. Shared by ``ensure_pack`` (first provision) and ``update_pack``
+    (re-pull a newer version). Never raises — provisioning must not crash the daemon."""
     t = triple()
     fname = f"strobes-sandbox-pack-{t}.tar.gz"
     url = base_url.rstrip("/") + "/" + fname
-    root = Path(os.environ.get(PACK_DIR_ENV, DEFAULT_ROOT)).expanduser()
-    root.mkdir(parents=True, exist_ok=True)
     try:
+        root.mkdir(parents=True, exist_ok=True)
         log.info("downloading sandbox pack: %s", url)
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td) / fname
@@ -326,17 +337,63 @@ def ensure_pack(download: bool = True, timeout: int = 300) -> Optional[Path]:
                 got = _sha256(tmp)
                 if got != expected:
                     log.error("pack sha256 mismatch (want %s got %s) — refusing", expected, got)
-                    return None
+                    return False
                 log.info("pack sha256 verified")
             else:
                 log.warning("no .sha256 alongside pack; skipping integrity check")
             with tarfile.open(tmp) as tar:
                 _safe_extract(tar, root)
+        return True
     except Exception as e:  # noqa: BLE001 — provisioning must never crash the daemon
         log.error("sandbox pack download failed: %s", e)
-        return None
+        return False
 
+
+def installed_version() -> Optional[str]:
+    """Version string of the currently installed pack (manifest ``version``), or None
+    if no pack / an older pack without the field."""
+    p = find_pack()
+    return _manifest(p).get("version") if p else None
+
+
+def needs_update(desired_version: Optional[str]) -> bool:
+    """True when the server-requested pack version differs from what is installed.
+    A falsy ``desired_version`` means "server has no opinion" → never force an update.
+    An installed pack with no ``version`` (pre-versioning build) is treated as stale
+    so the first versioned pack replaces it."""
+    if not desired_version:
+        return False
+    return installed_version() != desired_version
+
+
+def update_pack(base_url: Optional[str] = None, expected_version: Optional[str] = None,
+                timeout: int = 600) -> Optional[Path]:
+    """Re-pull the sandbox pack even though one is already installed, then hot-swap it.
+
+    Unlike :func:`ensure_pack` (which short-circuits the moment any pack is present),
+    this always downloads from ``base_url`` (default ``STROBES_PACK_URL``) and extracts
+    over the install root, so a bridge picks up a newer pack — new CLI tools, patched
+    packages — WITHOUT a reinstall. The extract is name-for-name over the same
+    ``<root>/<triple>`` dir; tarball members overwrite in place and the caches are
+    reset so the next command uses the new binaries.
+
+    If ``expected_version`` is given and, after extraction, the installed version still
+    does not match it, the update is reported as failed (the URL served a stale pack).
+    Returns the pack path on success, else None. Never raises.
+    """
+    base_url = base_url or os.environ.get(PACK_URL_ENV)
+    if not base_url:
+        log.warning("update_pack: no STROBES_PACK_URL configured")
+        return None
+    root = Path(os.environ.get(PACK_DIR_ENV, DEFAULT_ROOT)).expanduser()
+    if not _download_pack(base_url, root, timeout):
+        return None
     _reset_caches()
+    if expected_version and installed_version() != expected_version:
+        log.error("update_pack: after pull, version is %s (wanted %s)",
+                  installed_version(), expected_version)
+        return None
+    log.info("sandbox pack updated: %s", status())
     return find_pack()
 
 
