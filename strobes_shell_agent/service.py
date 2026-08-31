@@ -73,11 +73,22 @@ Restart=always
 RestartSec=5
 # Reasonable resource caps
 LimitNOFILE=65536
-{env_lines}
+{cap_lines}{env_lines}
 
 [Install]
 WantedBy={target}
 """
+
+# Raw-socket capability for the scanners in the sandbox pack (naabu). Granted as an
+# AMBIENT capability so it is inherited by child processes (naabu) WITHOUT running
+# the daemon as full root — least privilege. With CAP_NET_RAW, naabu uses a fast SYN
+# scan instead of the slow, unprivileged connect scan. Only meaningful for a *system*
+# service (a `systemctl --user` manager cannot grant capabilities), so it is added
+# for system scope only. Harmless when the service already runs as root.
+_NET_RAW_CAP_LINES = (
+    "# Raw sockets for fast SYN scanning (naabu) — least privilege, not full root\n"
+    "AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN\n"
+)
 
 
 def install_systemd(args: dict, scope: str = "user") -> str:
@@ -103,9 +114,13 @@ def install_systemd(args: dict, scope: str = "user") -> str:
 
     unit_dir.mkdir(parents=True, exist_ok=True)
     unit_path = unit_dir / f"{LABEL}.service"
+    # Grant CAP_NET_RAW only to a system service — a user manager cannot grant caps,
+    # and putting AmbientCapabilities in a --user unit makes systemd refuse to start it.
+    cap_lines = _NET_RAW_CAP_LINES if scope == "system" else ""
     unit_path.write_text(SYSTEMD_UNIT.format(
         command=_build_command(args),
         target=target,
+        cap_lines=cap_lines,
         env_lines=env_lines,
     ))
 
@@ -158,12 +173,27 @@ LAUNCHD_PLIST = """\
 """
 
 
-def install_launchd(args: dict) -> str:
-    """Install a per-user launchd LaunchAgent (~/Library/LaunchAgents)."""
+def install_launchd(args: dict, scope: str = "user") -> str:
+    """Install a launchd job.
+
+    scope="user" (default) → a per-user LaunchAgent in ~/Library/LaunchAgents,
+    running as the logged-in user (unprivileged).
+
+    scope="system" → a LaunchDaemon in /Library/LaunchDaemons, loaded at boot and
+    running as **root**. macOS has no Linux-style capabilities, so root is the only
+    way to give the bundled scanner (naabu) the raw sockets it needs for a fast SYN
+    scan — the mac equivalent of the systemd CAP_NET_RAW grant. Requires the install
+    to run under sudo.
+    """
     if sys.platform != "darwin":
         raise RuntimeError("launchd is macOS-only.")
     if shutil.which("launchctl") is None:
         raise RuntimeError("launchctl not found.")
+    system = scope == "system"
+    if system and os.geteuid() != 0:
+        raise RuntimeError(
+            "a system LaunchDaemon (for privileged SYN scanning) must be installed "
+            "as root — re-run with: sudo ... install-service --scope system")
 
     env_dict = args.pop("_env", {})
 
@@ -182,7 +212,8 @@ def install_launchd(args: dict) -> str:
 
     program_args = "\n".join(f"    <string>{x}</string>" for x in pa)
 
-    log_dir = Path.home() / "Library/Logs"
+    # Root daemon logs to /Library/Logs (system-wide); user agent to ~/Library/Logs.
+    log_dir = Path("/Library/Logs") if system else (Path.home() / "Library/Logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     stdout = log_dir / "strobes-shell-agent.out.log"
     stderr = log_dir / "strobes-shell-agent.err.log"
@@ -194,7 +225,9 @@ def install_launchd(args: dict) -> str:
             env_block += f"    <key>{k}</key>\n    <string>{v}</string>\n"
         env_block += "  </dict>"
 
-    plist_dir = Path.home() / "Library/LaunchAgents"
+    # LaunchDaemons run as root by default (no UserName key needed) → naabu inherits
+    # root and can SYN-scan. LaunchAgents run as the logged-in user.
+    plist_dir = Path("/Library/LaunchDaemons") if system else (Path.home() / "Library/LaunchAgents")
     plist_dir.mkdir(parents=True, exist_ok=True)
     plist_path = plist_dir / f"{LABEL}.plist"
     plist_path.write_text(LAUNCHD_PLIST.format(
@@ -205,15 +238,20 @@ def install_launchd(args: dict) -> str:
         env_block=env_block,
     ))
 
-    # Unload first in case a stale one is registered, then load.
+    # Unload first in case a stale one is registered, then load. A LaunchDaemon is
+    # loaded into the system domain (we are already root here); a LaunchAgent into
+    # the user's GUI domain.
     subprocess.run(["launchctl", "unload", str(plist_path)],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     subprocess.run(["launchctl", "load", "-w", str(plist_path)], check=False)
     return str(plist_path)
 
 
-def uninstall_launchd() -> str:
-    plist_path = Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
+def uninstall_launchd(scope: str = "user") -> str:
+    if scope == "system":
+        plist_path = Path("/Library/LaunchDaemons") / f"{LABEL}.plist"
+    else:
+        plist_path = Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
     if shutil.which("launchctl") is not None:
         subprocess.run(["launchctl", "unload", str(plist_path)],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)

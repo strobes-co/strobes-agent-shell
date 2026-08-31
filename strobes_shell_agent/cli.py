@@ -251,9 +251,19 @@ def install_service(url, api_key, org_id, bridge_id, name, cwd, ssl_verify, scop
 
     try:
         if sys.platform == "darwin":
-            path = svc.install_launchd(flags)
-            click.echo(f"Installed launchd LaunchAgent: {path}")
-            click.echo("Manage with: launchctl unload/load -w " + path)
+            # auto → a root LaunchDaemon when installed with sudo (privileged SYN
+            # scanning), else a per-user LaunchAgent.
+            mac_scope = scope
+            if mac_scope == "auto":
+                mac_scope = "system" if os.geteuid() == 0 else "user"
+            path = svc.install_launchd(flags, scope=mac_scope)
+            kind = "LaunchDaemon (root)" if mac_scope == "system" else "LaunchAgent"
+            sudo = "sudo " if mac_scope == "system" else ""
+            click.echo(f"Installed launchd {kind}: {path}")
+            click.echo(f"Manage with: {sudo}launchctl unload/load -w {path}")
+            if mac_scope != "system":
+                click.echo("Tip: install with `sudo … --scope system` for a root "
+                           "LaunchDaemon so naabu can SYN-scan (faster recon).")
         elif sys.platform.startswith("linux"):
             if scope == "auto":
                 scope = _detect_default_scope()
@@ -276,8 +286,11 @@ def install_service(url, api_key, org_id, bridge_id, name, cwd, ssl_verify, scop
 def uninstall_service(scope):
     """Remove the previously-installed system service."""
     if sys.platform == "darwin":
-        path = svc.uninstall_launchd()
-        click.echo(f"Removed launchd LaunchAgent: {path}")
+        mac_scope = scope
+        if mac_scope == "auto":
+            mac_scope = "system" if os.geteuid() == 0 else "user"
+        path = svc.uninstall_launchd(scope=mac_scope)
+        click.echo(f"Removed launchd {'LaunchDaemon' if mac_scope == 'system' else 'LaunchAgent'}: {path}")
     elif sys.platform.startswith("linux"):
         if scope == "auto":
             scope = _detect_default_scope()
