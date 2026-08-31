@@ -278,32 +278,74 @@ def _bundled_tarball() -> Optional[Path]:
     return None
 
 
+def _bundled_version() -> Optional[str]:
+    """Version stamped in the pack tarball embedded in this binary, read WITHOUT a
+    full extract (peek just the manifest member). None if no bundle / no version."""
+    tb = _bundled_tarball()
+    if not tb:
+        return None
+    try:
+        with tarfile.open(tb) as tar:
+            for m in tar.getmembers():
+                if m.name.endswith("pack.manifest.json"):
+                    f = tar.extractfile(m)
+                    if f is not None:
+                        return json.loads(f.read().decode()).get("version")
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _extract_bundled(bundled: Path, replace: bool = False) -> bool:
+    """Extract the embedded pack tarball into the install root. When ``replace`` is
+    set (a version refresh), first remove any stale extracted packs for this triple
+    so the bundled pack WINS — otherwise a base pack would keep shadowing a bundled
+    profiled pack (find_pack prefers the base dir). Never raises."""
+    root = Path(os.environ.get(PACK_DIR_ENV, DEFAULT_ROOT)).expanduser()
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        if replace:
+            for d in _packs_in(root, triple()):
+                if d != root and d.is_dir() and _is_pack(d):
+                    shutil.rmtree(d, ignore_errors=True)
+        log.info("extracting bundled sandbox pack (offline): %s", bundled.name)
+        with tarfile.open(bundled) as tar:
+            _safe_extract(tar, root)
+        _reset_caches()
+        return find_pack() is not None
+    except Exception as e:  # noqa: BLE001
+        log.error("bundled pack extraction failed: %s", e)
+        return False
+
+
 def ensure_pack(download: bool = True, timeout: int = 300) -> Optional[Path]:
     """Make a pack available and return its path (or None). Order, DEFAULT IS OFFLINE:
-      1. already present (baked/co-located/cached) → use it, no network;
-      2. a pack tarball bundled inside the artifact → self-extract locally, no network;
+      1. already present AND current → use it, no network;
+      1b. present but a NEWER pack is embedded in this binary → refresh from it;
+      2. none present but a pack tarball is bundled → self-extract locally, no network;
       3. ONLY if ``STROBES_PACK_URL`` is explicitly set → download + verify + extract.
     Never raises — any failure just leaves the daemon on host tools.
     """
     existing = find_pack()
+    bundled = _bundled_tarball()
+
+    # 1 / 1b. An installed pack exists. Keep it UNLESS this binary ships a pack whose
+    # version differs — a new binary must not be shadowed by a stale on-disk pack
+    # (older install, or a prior STROBES_PACK_URL download). This is why "install the
+    # new binary" alone showed old tools: ensure_pack used to return `existing`
+    # unconditionally and never extracted the newer embedded pack.
     if existing:
+        bv = _bundled_version()
+        if bundled and bv and _manifest(existing).get("version") != bv:
+            log.info("installed pack %s != bundled %s — refreshing from embedded pack",
+                     _manifest(existing).get("version"), bv)
+            if _extract_bundled(bundled, replace=True):
+                return find_pack()
         return existing
 
     # 2. offline self-extract from a pack tarball embedded in the binary
-    bundled = _bundled_tarball()
-    if bundled:
-        root = Path(os.environ.get(PACK_DIR_ENV, DEFAULT_ROOT)).expanduser()
-        try:
-            root.mkdir(parents=True, exist_ok=True)
-            log.info("extracting bundled sandbox pack (offline): %s", bundled.name)
-            with tarfile.open(bundled) as tar:
-                _safe_extract(tar, root)
-            _reset_caches()
-            found = find_pack()
-            if found:
-                return found
-        except Exception as e:  # noqa: BLE001
-            log.error("bundled pack extraction failed: %s", e)
+    if bundled and _extract_bundled(bundled, replace=False):
+        return find_pack()
 
     # 3. explicit opt-in network download (never the default — requires STROBES_PACK_URL)
     if not download:
