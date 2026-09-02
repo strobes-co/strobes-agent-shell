@@ -14,6 +14,8 @@ from websockets.exceptions import ConnectionClosed
 
 from strobes_shell_agent import pack
 from strobes_shell_agent import selfupdate
+from strobes_shell_agent import sessions
+from strobes_shell_agent import responder
 from strobes_shell_agent import __version__ as AGENT_VERSION
 from strobes_shell_agent.executor import (
     execute_shell_command,
@@ -384,6 +386,53 @@ class ShellBridgeClient:
                 bg_cancel,
                 params.get("task_id", ""),
             )
+
+        # --- Persistent, reusable shell sessions (retainable footholds) ---
+        # A session keeps a live shell (cwd/env/sudo/ssh preserved) so agents can
+        # create one and reuse it across commands. Run in worker threads: PTY I/O
+        # + waits must not stall the daemon event loop.
+        elif command == "session_create":
+            return await asyncio.to_thread(
+                sessions.session_create,
+                params.get("cwd") or self.cwd,
+                params.get("label", ""),
+                params.get("shell"),
+            )
+
+        elif command == "session_list":
+            return await asyncio.to_thread(sessions.session_list)
+
+        elif command == "session_exec":
+            return await asyncio.to_thread(
+                sessions.session_exec,
+                params.get("session_id", ""),
+                params.get("command", ""),
+                params.get("timeout", 60),
+            )
+
+        elif command == "session_delete":
+            return await asyncio.to_thread(
+                sessions.session_delete,
+                params.get("session_id", ""),
+            )
+
+        # --- Responder: background LLMNR/NBT-NS/mDNS poisoning + hash capture ---
+        elif command == "responder_start":
+            return await asyncio.to_thread(
+                responder.responder_start,
+                params.get("interface"),
+                params.get("analyze", True),
+                params.get("wpad", False),
+            )
+
+        elif command == "responder_status":
+            return await asyncio.to_thread(responder.responder_status)
+
+        elif command == "responder_captures":
+            return await asyncio.to_thread(responder.responder_captures)
+
+        elif command == "responder_stop":
+            return await asyncio.to_thread(responder.responder_stop)
 
         elif command == "file_read":
             return read_file(params.get("path", ""))
