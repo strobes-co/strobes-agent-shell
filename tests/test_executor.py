@@ -2,11 +2,15 @@
 
 import asyncio
 import os
+import shutil
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
+from strobes_shell_agent import pack
+from strobes_shell_agent import executor as executor_mod
 from strobes_shell_agent.executor import (
     execute_shell_command,
     execute_code,
@@ -15,9 +19,123 @@ from strobes_shell_agent.executor import (
     list_files,
     download_file,
     upload_file,
+    windows_shell_compat,
 )
 
 IS_WINDOWS = sys.platform == "win32"
+
+
+# ---------------------------------------------------------------------------
+# Windows shell compatibility
+#
+# These are pure string-transform tests, run on whatever host CI/the dev
+# machine happens to be — windows_shell_compat() never inspects the real
+# platform itself (execute_shell_command is the only IS_WINDOWS-gated call
+# site), so the rewrite logic is fully exercisable from macOS/Linux too. The
+# cases below are the exact shapes shell_precheck_service.py sends today.
+# ---------------------------------------------------------------------------
+
+
+class TestWindowsShellCompat:
+
+    def test_dev_null_rewritten_to_nul(self, monkeypatch):
+        monkeypatch.setattr(pack, "pack_python", lambda: None)
+        monkeypatch.setattr(pack, "build_env", lambda: {"PATH": ""})
+        monkeypatch.setattr(shutil, "which", lambda *a, **k: None)
+
+        cmd = "python3 --version 2>/dev/null || python --version 2>/dev/null"
+        out = windows_shell_compat(cmd)
+
+        assert "/dev/null" not in out
+        assert out.count("NUL") == 2
+
+    def test_dash_c_single_quoted_extracted_to_tempfile(self, monkeypatch, tmp_path):
+        fake_py = tmp_path / "python.exe"
+        fake_py.write_text("")
+        monkeypatch.setattr(pack, "pack_python", lambda: fake_py)
+
+        cmd = "python3 -c 'from playwright.sync_api import sync_playwright' 2>&1"
+        out = windows_shell_compat(cmd)
+
+        assert "-c" not in out
+        assert "'" not in out
+        assert str(fake_py) in out
+
+        temp_paths = [p for p in out.split() if "strobes_c_" in p and p.endswith(".py")]
+        assert len(temp_paths) == 1, out
+        assert Path(temp_paths[0]).read_text() == (
+            "from playwright.sync_api import sync_playwright"
+        )
+
+    def test_dash_c_with_embedded_double_quotes(self, monkeypatch, tmp_path):
+        """The exact playwright-post-install-check shape: a single-quoted -c
+        body that itself contains double quotes (print("pwok"))."""
+        fake_py = tmp_path / "python.exe"
+        fake_py.write_text("")
+        monkeypatch.setattr(pack, "pack_python", lambda: fake_py)
+
+        cmd = (
+            "python3 -c 'from playwright.sync_api import sync_playwright; "
+            'print("pwok")\' 2>&1'
+        )
+        out = windows_shell_compat(cmd)
+
+        temp_paths = [p for p in out.split() if "strobes_c_" in p and p.endswith(".py")]
+        assert len(temp_paths) == 1, out
+        assert Path(temp_paths[0]).read_text() == (
+            'from playwright.sync_api import sync_playwright; print("pwok")'
+        )
+
+    def test_bare_python_and_pip_tokens_resolved_to_pack(self, monkeypatch, tmp_path):
+        fake_py = tmp_path / "python.exe"
+        fake_py.write_text("")
+        monkeypatch.setattr(pack, "pack_python", lambda: fake_py)
+
+        cmd = "pip3 install --quiet playwright || pip install --quiet playwright"
+        out = windows_shell_compat(cmd)
+
+        assert "pip3" not in out
+        assert out.count(f"{fake_py} -m pip install") == 2
+
+    def test_powershell_commands_pass_through_unchanged(self):
+        cmd = "powershell -NoProfile -Command \"$PY='C:\\pack\\python.exe'; & $PY probe.py\""
+        assert windows_shell_compat(cmd) == cmd
+
+    def test_falls_back_to_path_when_no_pack(self, monkeypatch):
+        monkeypatch.setattr(pack, "pack_python", lambda: None)
+        monkeypatch.setattr(pack, "build_env", lambda: {"PATH": "/usr/bin"})
+        monkeypatch.setattr(
+            shutil,
+            "which",
+            lambda name, path=None: "/usr/bin/python" if name == "python" else None,
+        )
+
+        out = windows_shell_compat("python --version")
+
+        assert "/usr/bin/python" in out
+
+    def test_unresolvable_interpreter_leaves_tokens_alone(self, monkeypatch):
+        """No pack and nothing on PATH: don't invent a broken path, just skip
+        the token-resolution step (the /dev/null and -c rewrites, which
+        don't depend on finding an interpreter, still apply)."""
+        monkeypatch.setattr(pack, "pack_python", lambda: None)
+        monkeypatch.setattr(pack, "build_env", lambda: {"PATH": ""})
+        monkeypatch.setattr(shutil, "which", lambda *a, **k: None)
+
+        out = windows_shell_compat("python --version 2>/dev/null")
+
+        assert out == "python --version 2>NUL"
+
+    def test_never_raises_on_resolution_failure(self, monkeypatch):
+        def _boom():
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(executor_mod, "_win_resolve_python", _boom)
+
+        # No /dev/null or -c shape in this one, so the only thing that could
+        # fail is python-token resolution — confirms the failure is swallowed
+        # rather than raised, and the command is returned as-is.
+        assert windows_shell_compat("echo hi") == "echo hi"
 
 
 @pytest.mark.asyncio
