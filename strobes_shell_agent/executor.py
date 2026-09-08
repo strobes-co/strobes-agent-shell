@@ -4,6 +4,7 @@ import asyncio
 import base64
 import os
 import platform
+import re
 import shlex
 import shutil
 import signal
@@ -17,6 +18,126 @@ from typing import Optional
 from strobes_shell_agent import pack
 
 IS_WINDOWS = sys.platform == "win32"
+
+
+# --------------------------------------------------------------------------- #
+# Windows shell compatibility
+#
+# Commands reaching this daemon (from the platform's shell-precheck service,
+# skill injection, etc.) are generated assuming a POSIX shell: `/dev/null`,
+# single-quoted `-c '...'` python snippets, bare `python3`/`pip3`. cmd.exe (what
+# asyncio.create_subprocess_shell uses on Windows) understands none of that:
+#
+#   - `/dev/null` is just a literal path, not a null device.
+#   - single quotes are NOT a grouping character to cmd.exe — it only
+#     recognises `"`. `python3 -c 'from x import y'` gets word-split into
+#     separate argv tokens on every space, so `-c` only ever receives the
+#     first token (`'from`) — Python then fails with "unterminated string
+#     literal" on that lone fragment. This exact signature was observed on
+#     every real Windows bridge sampled (2026-07 through 2026-09).
+#   - `python3`/`pip3` don't exist as commands on Windows (no python3.exe),
+#     so they either 404 outright or, worse, resolve to the Microsoft Store's
+#     python.exe app-execution-alias stub, which prints an installer prompt
+#     instead of running anything.
+#
+# Rather than trust every call site across the platform to know this, the
+# bridge — the thing that actually knows it's running on Windows — rewrites
+# recognised POSIX shapes into a form cmd.exe executes correctly, and always
+# routes `python`/`pip` invocations through the sandbox pack's own bundled
+# interpreter (pack.pack_python()) instead of whatever PATH happens to
+# resolve, since that's the one interpreter guaranteed to actually be there.
+# Unrecognised shapes (notably the PowerShell-wrapped commands the platform's
+# Windows-aware code paths already send) are left untouched.
+# --------------------------------------------------------------------------- #
+
+_DEV_NULL_RE = re.compile(r"(?<![\w./\\-])/dev/null\b")
+
+# `(python3|python) -c '<code>'` — a POSIX single-quoted string is fully
+# literal (no escape processing at all, not even `\'`), so the code is simply
+# everything up to the next `'`. Deliberately does NOT also match a
+# double-quoted `-c` form: cmd.exe already groups double-quoted arguments
+# correctly, so only the single-quoted shape (the one that gets word-split)
+# needs rewriting.
+_PY_DASH_C_SINGLE_RE = re.compile(r"\b(python3?)\b(\s+)-c(\s+)'([^']*)'")
+
+# Bare interpreter invocation: the word python3/python/pip3/pip, not part of
+# a longer identifier and not already an absolute path someone constructed.
+_PY_TOKEN_RE = re.compile(r"(?<![\w./\\-])(python3?|pip3?)(?=\s|$)")
+
+
+def _win_resolve_python() -> Optional[str]:
+    """Absolute path to a real interpreter to substitute for bare `python`/
+    `python3` on Windows. Prefers the sandbox pack's bundled standalone
+    interpreter — it's guaranteed present and importable, unlike anything
+    PATH might resolve to (a real install, nothing, or the Store stub).
+    Falls back to whatever `python`/`py` resolves to on PATH if there's no
+    pack, so this still degrades to the pre-pack behaviour rather than
+    breaking a host with a normal Python install and no pack."""
+    py = pack.pack_python()
+    if py:
+        return str(py)
+    env_path = pack.build_env().get("PATH")
+    for name in ("python", "py"):
+        found = shutil.which(name, path=env_path)
+        if found:
+            return found
+    return None
+
+
+def _win_extract_dash_c(command: str) -> str:
+    """Rewrite every single-quoted ``<py> -c '<code>'`` into ``<py>
+    <tempfile>``, sidestepping cmd.exe's single-quote word-splitting
+    entirely instead of trying to re-quote for it. The temp .py file is left
+    behind (same tradeoff the platform's own Windows SDK bootstrap already
+    makes for its probe/boot scripts) — negligible litter in %TEMP%, and
+    deleting it would need a second round-trip this command doesn't have."""
+
+    def _sub(match: "re.Match[str]") -> str:
+        code = match.group(4)
+        fd, path = tempfile.mkstemp(suffix=".py", prefix="strobes_c_")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(code)
+        return f"{match.group(1)}{match.group(2)}{path}"
+
+    return _PY_DASH_C_SINGLE_RE.sub(_sub, command)
+
+
+def _win_resolve_interpreter_tokens(command: str, python_path: str) -> str:
+    """Replace bare `python3`/`python`/`pip3`/`pip` tokens with an absolute,
+    guaranteed-real interpreter invocation. `pip`/`pip3` become `"<py>" -m
+    pip` rather than a separately-resolved pip executable — same interpreter,
+    no second resolution step, works even for a pack with no Scripts/pip
+    shim on PATH."""
+    quoted = f'"{python_path}"' if " " in python_path else python_path
+
+    def _sub(match: "re.Match[str]") -> str:
+        token = match.group(1)
+        return f"{quoted} -m pip" if token.startswith("pip") else quoted
+
+    return _PY_TOKEN_RE.sub(_sub, command)
+
+
+def windows_shell_compat(command: str) -> str:
+    """Best-effort rewrite of a POSIX-shaped command into one cmd.exe runs
+    correctly. Deliberately conservative: only touches the specific shapes
+    documented above (`/dev/null`, single-quoted `-c`, bare python/pip
+    tokens); anything else — including the platform's own PowerShell-wrapped
+    Windows commands — passes through unchanged. Never raises: on any
+    resolution failure this returns the command untouched rather than
+    guessing, since a wrong guess (e.g. an empty interpreter path) is worse
+    than the original, already-understood failure mode."""
+    if command.lstrip().lower().startswith("powershell"):
+        return command
+    try:
+        command = _DEV_NULL_RE.sub("NUL", command)
+        command = _win_extract_dash_c(command)
+        python_path = _win_resolve_python()
+        if python_path:
+            command = _win_resolve_interpreter_tokens(command, python_path)
+        return command
+    except Exception:
+        return command
+
 
 # Detached-process flags used by the background executor. CREATE_NEW_PROCESS_GROUP
 # lets ``taskkill /T`` reach the whole tree; DETACHED_PROCESS frees it from the
@@ -39,6 +160,8 @@ async def execute_shell_command(
     start = time.monotonic()
     if cwd and not os.path.isdir(cwd):
         cwd = None
+    if IS_WINDOWS:
+        command = windows_shell_compat(command)
 
     popen_kwargs = {
         "stdout": asyncio.subprocess.PIPE,
